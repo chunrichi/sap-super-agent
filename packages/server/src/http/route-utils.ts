@@ -24,7 +24,8 @@ export function publish(ctx: ServerContext): (events: readonly EventEnvelope[]) 
     for (const event of events) {
       const isNewTask = event.type === 'task.created';
       const isPooledTask =
-        event.type === 'task.updated' && event.data['state'] === 'pending';
+        event.type === 'task.released' ||
+        (event.type === 'task.updated' && event.data['state'] === 'pending');
       if (!isNewTask && !isPooledTask) continue;
       const task = getTask(ctx.db, event.subject.id);
       if (task !== null && task.state === 'pending') {

@@ -158,7 +158,7 @@ Assignment 状态：`active → completed | released | expired`。
 
 派发事件：
 
-- 执行器上线 / 工作区绑定变化 → 服务端重算可领取列表并推送 `task.offered`。
+- 执行器注册 / 心跳 → 服务端重算可领取列表，在心跳响应里返回 `offers`；任务新建或回池时再向已连接客户端推送 `task.offered` 提示帧（H0 广播给所有连接，按执行器过滤在 S3 增强）。
 - 任务新增 → 推送给所有满足 1–5 的在线执行器（只含摘要，不含工件内容）。
 - 租约过期 → 写 `assignment.expired` 事件，任务回池并推送给其他候选。
 
@@ -213,8 +213,8 @@ Assignment 状态：`active → completed | released | expired`。
 统一 envelope：
 
 ```json
-{ "seq": 12043, "id": "01J...", "type": "task.offered", "at": "2026-11-04T12:00:00Z",
-  "subject": { "type": "task", "id": "01J..." }, "data": { } }
+{ "seq": 12043, "id": "01J...", "type": "task.updated", "at": "2026-11-04T12:00:00Z",
+  "subject": { "type": "task", "id": "01J..." }, "data": { "state": "in_progress" } }
 ```
 
 | 方向 | type | 触发 |
@@ -226,7 +226,7 @@ Assignment 状态：`active → completed | released | expired`。
 
 只推送**摘要**；工件内容与上下文包走 REST 按需拉取，避免大消息与重复传输。
 
-`task.offered` 是**传输帧而非事件**（§2.3：不持久化）：`{type:"task.offered", at, subject:{type:"task",id}, task:{id,demandId,title,executorKind,requiredRoles,workspaceBinding,priority,dueAt}}`，不带 `seq`；任务新建或回池时推送，客户端据此刷新可领取列表，权威状态仍以 REST/事件日志为准。`task.updated`/`task.cancelled` 走统一事件 envelope。
+`task.offered` 是**传输帧而非事件**（§2.3：不持久化）：`{type:"task.offered", at, subject:{type:"task",id}, task:{id,demandId,title,executorKind,requiredRoles,workspaceBinding,priority,dueAt}}`，不带 `seq`；任务新建或回池（租约过期、主动 release、执行器下线释放）时推送，客户端据此刷新可领取列表，权威状态仍以 REST/事件日志为准。H0 实现广播给所有已连接客户端（只含摘要）；按执行器资格过滤在 S3 增强。`task.updated`/`task.cancelled` 走统一事件 envelope。
 
 ### 4.5 SAP 入站 webhook
 

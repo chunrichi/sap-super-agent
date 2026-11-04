@@ -5,7 +5,9 @@ import {
   api,
   createAdminTask,
   createDemandWithArtifact,
+  heartbeat,
   readEvents,
+  registerExecutor,
   startTestServer,
   type TestServer,
 } from './helpers.js';
@@ -203,6 +205,44 @@ describe('control-plane WebSocket event stream', () => {
       expect(frame.seq).toBeUndefined();
       const events = await readEvents(server, 0);
       expect(events.events.map((event) => event.type)).not.toContain('task.offered');
+    } finally {
+      probe.socket.close();
+    }
+  });
+
+  it('re-offers a task after an explicit release', async () => {
+    const { demandId } = await createDemandWithArtifact(server);
+    const created = await createAdminTask(server, {
+      demandId,
+      title: 'R-9005 released task',
+      executorKind: 'vscode',
+      requiredRoles: [],
+      workspaceBinding: null,
+    });
+    const taskId = created.body.task.id;
+    const executor = await registerExecutor(server, 'DEV001');
+    await heartbeat(server, executor);
+    const claimed = await api(server, `/api/v1/tasks/${taskId}/claim`, {
+      method: 'POST',
+      token: executor.token,
+      body: {},
+    });
+    expect(claimed.status).toBe(200);
+
+    const { lastSeq } = await readEvents(server);
+    const probe = await openProbe(socketUrl(server, server.userToken, lastSeq));
+    try {
+      const released = await api(server, `/api/v1/tasks/${taskId}/release`, {
+        method: 'POST',
+        token: executor.token,
+        body: {},
+      });
+      expect(released.status).toBe(200);
+      const frame = await probe.waitFor(
+        (message) => message.type === 'task.offered' && message.subject.id === taskId,
+      );
+      expect(frame.seq).toBeUndefined();
+      expect(frame.task).toMatchObject({ id: taskId });
     } finally {
       probe.socket.close();
     }

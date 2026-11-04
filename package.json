@@ -10,7 +10,7 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "scripts": {
-    "dev": "pnpm --filter @sap-superagent/cli run dev",
+    "dev": "tsx packages/cli/src/cli.ts dev",
     "cli": "tsx packages/cli/src/cli.ts",
     "check": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run contract:check",
     "typecheck": "pnpm -r --if-present run typecheck",

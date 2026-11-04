@@ -121,6 +121,7 @@ Assignment 状态：`active → completed | released | expired`。
 | `capabilities` | `coding`、`doc-review`、`test-run` 等；与任务要求匹配 |
 | `roles` | 允许领取的角色（后端、ABAP、测试……） |
 | `workspaces` | `{workspaceKey, repo, projectKey, baseBranch, localPathHint?}` 列表；`workspaceKey = sha256(规范化后的工作区 URI)`，只属于执行器（当前打开的目录），任务侧只带 repo/projectKey |
+| `activeWorkspaceKey` | 当前**打开**的工作区 key（必须属于 `workspaces`）；由心跳更新；为 `null` 或不属于列表即视为不可派单。实现补充：该字段原在 §3 规则中出现但 §2.6 未定义 |
 | `machineIdHash` | `sha256(vscode.env.machineId)`；只存哈希，用于"同目录重复打开"与审计 |
 | `presence` | `online / busy / away / offline`，由 WS 连接、心跳与显式状态计算 |
 | `accepting` | 布尔；`false` 表示用户暂停接单（仍在线）。`server-ai` 恒为 online 且 accepting=true（全局 paused 除外） |
@@ -176,7 +177,7 @@ Assignment 状态：`active → completed | released | expired`。
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | POST | `/executors/register` | 注册并换取 executor token；声明 kind/user/machineIdHash/capabilities/roles/workspaces/protocolVersion/cliVersion |
-| POST | `/executors/{id}/heartbeat` | 每 20s：`{status, load, workspaces?}` → `{serverTime, leaseTtlMs, offers}`；服务端 TTL 60s |
+| POST | `/executors/{id}/heartbeat` | 每 20s：`{status, load, workspaces?, activeWorkspaceKey?}` → `{serverTime, leaseTtlMs, renewIntervalMs, offers}`；服务端 TTL 60s |
 | DELETE | `/executors/{id}` | 优雅下线；立即回收其活跃任务 |
 | GET | `/tasks` | 查询可领取任务（已按资格过滤）；`?state=pending&limit=20` |
 | GET | `/tasks/{id}` | 任务详情 + 门禁/工件摘要 |

@@ -4,6 +4,7 @@ import {
   eventsQuerySchema,
   eventsResponseSchema,
   wsClientMessageSchema,
+  wsServerControlMessageSchema,
 } from '../src/index.js';
 import { DEMAND_ID, NOW, ULID_A, ULID_B } from './fixtures.js';
 
@@ -61,6 +62,27 @@ describe('events query/response', () => {
   it('accepts an empty replay window', () => {
     const response = eventsResponseSchema.parse({ events: [], lastSeq: 0, earliestSeq: 0 });
     expect(response.events).toHaveLength(0);
+  });
+});
+
+describe('WS server control messages', () => {
+  it('sends ping and resync_required transport frames', () => {
+    expect(
+      wsServerControlMessageSchema.safeParse({ type: 'server.ping', seq: 3, at: NOW }).success,
+    ).toBe(true);
+    expect(
+      wsServerControlMessageSchema.safeParse({
+        type: 'resync_required',
+        lastSeq: 120,
+        earliestSeq: 100,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects a persisted-looking event as a control frame', () => {
+    expect(
+      wsServerControlMessageSchema.safeParse({ type: 'task.offered', seq: 1 }).success,
+    ).toBe(false);
   });
 });
 

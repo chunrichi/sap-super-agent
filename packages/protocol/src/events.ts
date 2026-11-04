@@ -2,6 +2,8 @@ import { z } from 'zod';
 import {
   CLIENT_ACK,
   CLIENT_PONG,
+  RESYNC_REQUIRED,
+  SERVER_PING,
   eventSubjectTypeSchema,
   eventTypeSchema,
 } from './enums.js';
@@ -51,6 +53,25 @@ export const eventsResponseSchema = z
   })
   .strict();
 export type EventsResponse = z.infer<typeof eventsResponseSchema>;
+
+/** Transport-only WS messages sent by the server (never persisted). */
+export const wsServerControlMessageSchema = z.discriminatedUnion('type', [
+  z
+    .object({
+      type: z.literal(SERVER_PING),
+      seq: z.number().int().nonnegative(),
+      at: isoDateTimeSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal(RESYNC_REQUIRED),
+      lastSeq: z.number().int().nonnegative(),
+      earliestSeq: z.number().int().nonnegative(),
+    })
+    .strict(),
+]);
+export type WsServerControlMessage = z.infer<typeof wsServerControlMessageSchema>;
 
 /** Transport-only WS messages sent by clients (docs/003 §4.4). */
 export const wsClientMessageSchema = z.discriminatedUnion('type', [

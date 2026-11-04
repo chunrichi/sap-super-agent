@@ -114,6 +114,7 @@ describe('run ledger + executor', () => {
       capabilities: ['coding'],
       roles: ['developer'],
       workspaces: [{ workspaceKey: 'abc', repo: 'z-sales' }],
+      activeWorkspaceKey: 'abc',
       presence: 'online',
       accepting: true,
       maxConcurrent: 2,

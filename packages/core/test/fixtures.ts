@@ -15,6 +15,7 @@ export const vscodeExecutor: Executor = {
   workspaces: [
     { workspaceKey: 'wk-z-sales', repo: 'z-sales', projectKey: 'SALES', baseBranch: 'main' },
   ],
+  activeWorkspaceKey: 'wk-z-sales',
   presence: 'online',
   accepting: true,
   maxConcurrent: 2,
@@ -31,6 +32,7 @@ export const serverAiExecutor: Executor = {
   user: 'server-ai',
   machineIdHash: null,
   workspaces: [],
+  activeWorkspaceKey: null,
   roles: ['developer', 'consultant'],
   maxConcurrent: 4,
 };

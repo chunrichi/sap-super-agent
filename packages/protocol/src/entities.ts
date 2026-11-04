@@ -277,6 +277,8 @@ export const executorSchema = z
     capabilities: z.array(z.string().min(1)),
     roles: z.array(roleSchema),
     workspaces: z.array(executorWorkspaceSchema),
+    /** Workspace the executor currently has open; null = no folder / not bindable. */
+    activeWorkspaceKey: z.string().min(1).nullable(),
     presence: presenceStateSchema,
     accepting: z.boolean(),
     maxConcurrent: z.number().int().positive(),

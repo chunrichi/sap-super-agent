@@ -162,6 +162,7 @@ export type EventType = z.infer<typeof eventTypeSchema>;
 
 /** Transport-only WS messages (not persisted in the event log). */
 export const SERVER_PING = 'server.ping' as const;
+export const RESYNC_REQUIRED = 'resync_required' as const;
 export const CLIENT_PONG = 'client.pong' as const;
 export const CLIENT_ACK = 'client.ack' as const;
 

@@ -61,6 +61,8 @@ export const heartbeatBodySchema = z
     status: reportablePresenceSchema,
     load: z.number().int().nonnegative(),
     workspaces: z.array(executorWorkspaceSchema).optional(),
+    /** Currently open workspace; switching folders makes the executor unbindable. */
+    activeWorkspaceKey: z.string().min(1).nullable().optional(),
   })
   .strict();
 export type HeartbeatBody = z.infer<typeof heartbeatBodySchema>;

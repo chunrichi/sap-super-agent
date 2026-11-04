@@ -14,7 +14,11 @@ import {
   workspaceBindingSchema,
 } from './entities.js';
 import { apiErrorBodySchema } from './errors.js';
-import { eventEnvelopeSchema, eventsResponseSchema } from './events.js';
+import {
+  eventEnvelopeSchema,
+  eventsResponseSchema,
+  wsTaskOfferedFrameSchema,
+} from './events.js';
 import {
   claimTaskResponseSchema,
   createDemandBodySchema,
@@ -50,6 +54,7 @@ export const contractSchemas = {
   lease: leaseSchema,
   'event-envelope': eventEnvelopeSchema,
   'events-response': eventsResponseSchema,
+  'ws-task-offered-frame': wsTaskOfferedFrameSchema,
   'error-body': apiErrorBodySchema,
   'stage-template': stageTemplateSchema,
   'create-demand-body': createDemandBodySchema,

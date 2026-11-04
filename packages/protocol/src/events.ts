@@ -7,7 +7,7 @@ import {
   eventSubjectTypeSchema,
   eventTypeSchema,
 } from './enums.js';
-import { isoDateTimeSchema } from './entities.js';
+import { isoDateTimeSchema, taskSummarySchema } from './entities.js';
 import { ulidSchema } from './ids.js';
 
 // ---------------------------------------------------------------------------
@@ -53,6 +53,21 @@ export const eventsResponseSchema = z
   })
   .strict();
 export type EventsResponse = z.infer<typeof eventsResponseSchema>;
+
+/**
+ * Transport-only WS notification: `task.offered` is explicitly NOT persisted in
+ * the event log (docs/003 §2.3); it points clients at a claimable task and they
+ * pull the authoritative state via REST. It therefore carries no `seq`.
+ */
+export const wsTaskOfferedFrameSchema = z
+  .object({
+    type: z.literal('task.offered'),
+    at: isoDateTimeSchema,
+    subject: z.object({ type: z.literal('task'), id: ulidSchema }).strict(),
+    task: taskSummarySchema,
+  })
+  .strict();
+export type WsTaskOfferedFrame = z.infer<typeof wsTaskOfferedFrameSchema>;
 
 /** Transport-only WS messages sent by the server (never persisted). */
 export const wsServerControlMessageSchema = z.discriminatedUnion('type', [

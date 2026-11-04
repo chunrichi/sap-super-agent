@@ -5,6 +5,7 @@ import {
   eventsResponseSchema,
   wsClientMessageSchema,
   wsServerControlMessageSchema,
+  wsTaskOfferedFrameSchema,
 } from '../src/index.js';
 import { DEMAND_ID, NOW, ULID_A, ULID_B } from './fixtures.js';
 
@@ -83,6 +84,34 @@ describe('WS server control messages', () => {
     expect(
       wsServerControlMessageSchema.safeParse({ type: 'task.offered', seq: 1 }).success,
     ).toBe(false);
+  });
+});
+
+describe('task.offered transport frame', () => {
+  const frame = {
+    type: 'task.offered',
+    at: NOW,
+    subject: { type: 'task', id: ULID_A },
+    task: {
+      id: ULID_A,
+      demandId: DEMAND_ID,
+      title: '实现取数逻辑',
+      executorKind: 'vscode',
+      requiredRoles: ['developer'],
+      workspaceBinding: { repo: 'z-sales' },
+      priority: 'normal',
+      dueAt: null,
+    },
+  };
+
+  it('accepts the transport frame without an event cursor', () => {
+    expect(wsTaskOfferedFrameSchema.safeParse(frame).success).toBe(true);
+  });
+
+  it('rejects it when shaped like a persisted event envelope with seq', () => {
+    expect(wsTaskOfferedFrameSchema.safeParse({ ...frame, seq: 7, id: ULID_B }).success).toBe(
+      false,
+    );
   });
 });
 

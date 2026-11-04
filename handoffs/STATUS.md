@@ -19,7 +19,7 @@
 6. **真机验证缺口**：真实 VSCode Extension Host（F5/SecretStorage UI）未跑——按 H0 规范用 mock `vscode` 单测（67 个）；VSIX 打包与冒烟留待发布前。
 7. **端口**：默认 3080 与开发机上的 DSH Web GUI 冲突；手工冒烟用 `--port`/`SA_HTTP_PORT`。默认值仍按设计保持 3080。
 8. **同工作区并行会话**：`demo/`、README 小改、docs/006 一行为**另一会话/用户**在 2026-11-05 01:05 提交并推送（提交 `02d8689` 进入本分支历史、`f752592` 进入 main），不属 H0 产出；本分支 H0 提交为 ff13648…8b97215。
-9. **推送状态**：H0 分支未推送；本地比 `origin/feat/h0-walking-skeleton` 领先 16 个提交（origin 上只有早先的 protocol 提交与并行会话的 demo 提交）。合并建议：走 PR/squash，不直推 main。
+9. **推送状态**：H0 分支未推送；本地比 `origin/feat/h0-walking-skeleton` 领先 **17** 个提交（origin 上是早先的骨架/core/protocol 提交 + 并行会话的 demo 提交）。合并建议：走 PR/squash，不直推 main。
 
 ## 交接日志
 
@@ -33,3 +33,4 @@
 | 2026-11-05 | 第一轮独立验收（verifier）：可执行验收项全绿，但发现 6 个交付项缺口（降权、`.env`、单实例锁、`task.offered`、init→dev 测试、内存仓库）→ 全部修复并提交（34353a4…598da4e） |
 | 2026-11-05 | 第二轮独立验收：5/6 修复通过；`task.offered` 漏了显式 release 路径，另有 quick-start/.env 准确性问题 → 修复（4050784、8b97215）并补 WS release 测试 |
 | 2026-11-05 | H0 标记 done：`pnpm install --frozen-lockfile` / `pnpm check`（252 tests）/ `pnpm e2e`（4/4）/ `pnpm build` 全部通过；H1/H2 解除阻塞（状态 `todo`） |
+| 2026-11-05 | 第三轮独立复核（verifier）结论 **H0 DoD met: YES**：六个交付缺口 + D1–D4 全部复现通过，无阻塞项；仅 STATUS 推送计数 16→17 的笔误当场修正 |

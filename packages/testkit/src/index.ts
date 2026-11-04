@@ -6,3 +6,4 @@ export * from './temp.js';
 export * from './http.js';
 export * from './fake-executor.js';
 export * from './fake-sap.js';
+export * from './in-memory-repository.js';

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FakeExecutor } from '../src/fake-executor.js';
 import { FakeSap } from '../src/fake-sap.js';
+import { InMemoryEventLog, InMemoryRepository } from '../src/in-memory-repository.js';
 import { sha256Checksum, toBase64 } from '../src/checksum.js';
 import { waitFor } from '../src/http.js';
 
@@ -33,6 +34,56 @@ describe('testkit fakes', () => {
     });
     expect(executor.user).toBe('DEV001');
     expect(typeof executor.claim).toBe('function');
+  });
+});
+
+describe('in-memory repositories (H0 §1.8)', () => {
+  interface Row {
+    id: string;
+    title: string;
+  }
+
+  it('supports CRUD and rejects duplicate/missing ids', () => {
+    const repo = new InMemoryRepository<Row>();
+    repo.create({ id: 'a', title: 'first' });
+    expect(repo.size).toBe(1);
+    expect(repo.require('a').title).toBe('first');
+    expect(repo.get('missing')).toBeUndefined();
+    expect(() => repo.create({ id: 'a', title: 'dup' })).toThrow(/duplicate/);
+    expect(() => repo.update({ id: 'missing', title: 'x' })).toThrow(/missing/);
+    expect(repo.update({ id: 'a', title: 'updated' }).title).toBe('updated');
+    expect(repo.delete('a')).toBe(true);
+    expect(repo.size).toBe(0);
+  });
+
+  it('mirrors event log replay, resync and retention pruning', () => {
+    const log = new InMemoryEventLog();
+    log.append({
+      type: 'demand.created',
+      subject: { type: 'demand', id: 'd1' },
+      at: '2026-11-05T00:00:00.000Z',
+    });
+    log.append({
+      type: 'artifact.created',
+      subject: { type: 'artifact', id: 'a1' },
+      at: '2026-11-05T00:00:01.000Z',
+    });
+    log.append({
+      type: 'task.created',
+      subject: { type: 'task', id: 't1' },
+      at: '2026-11-05T00:00:02.000Z',
+    });
+
+    expect(log.lastSeq).toBe(3);
+    expect(log.earliestSeq).toBe(1);
+    expect(log.after(1).events.map((event) => event.seq)).toEqual([2, 3]);
+    expect(log.after(3).events).toEqual([]);
+
+    // Full prune keeps the newest event and makes old cursors resync.
+    expect(log.pruneBefore('2026-11-05T00:00:03.000Z')).toBe(2);
+    expect(log.earliestSeq).toBe(3);
+    expect(log.after(0)).toMatchObject({ resyncRequired: true, events: [] });
+    expect(log.after(3).resyncRequired).toBe(false);
   });
 });
 

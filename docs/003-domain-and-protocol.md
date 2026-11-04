@@ -226,6 +226,8 @@ Assignment 状态：`active → completed | released | expired`。
 
 只推送**摘要**；工件内容与上下文包走 REST 按需拉取，避免大消息与重复传输。
 
+`task.offered` 是**传输帧而非事件**（§2.3：不持久化）：`{type:"task.offered", at, subject:{type:"task",id}, task:{id,demandId,title,executorKind,requiredRoles,workspaceBinding,priority,dueAt}}`，不带 `seq`；任务新建或回池时推送，客户端据此刷新可领取列表，权威状态仍以 REST/事件日志为准。`task.updated`/`task.cancelled` 走统一事件 envelope。
+
 ### 4.5 SAP 入站 webhook
 
 `POST /hooks/sap`（HMAC + 幂等键），`data.type`：
@@ -255,7 +257,7 @@ Assignment 状态：`active → completed | released | expired`。
 ## 5. 工件与上下文
 
 - **存储可插拔**：本地文件（M1）、S3/对象存储（M2）、SAP 附件/内容仓库（M3）。控制平面只存元数据、checksum 与引用。M1 实现补充：本地模式把内容写到 `SA_STATE_DIR/artifacts/<artifactId>/v<n>.bin`，接口只接受 `contentBase64`（`contentUrl` 预留给 M2 对象存储）；checksum 必须等于解码后字节的 sha256。
-- **上下文包**是工件的只读快照，不是新概念：由需求摘要、输入工件、验收标准、工作区绑定和禁止项组成，扩展负责写入 `.sap-superagent/context/<taskId>.md`，供 Copilot Chat 引用。
+- **上下文包**是工件的只读快照，不是新概念：由需求摘要、输入工件、验收标准、工作区绑定和禁止项组成，扩展负责写入 `.sap-superagent/task/<taskId>/context.md`（同目录附 `context.json` 快照），供 Copilot Chat 用 `#file` 引用。
 - **审计**：工件每次创建/审批写事件；事件只追加，不更新。
 
 ## 6. 扩展点

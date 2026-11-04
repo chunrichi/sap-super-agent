@@ -1,10 +1,10 @@
-import type { EventEnvelope } from '@sap-superagent/protocol';
 import { endAssignment, releaseAssignmentsForExecutor } from '../lease.js';
 import { listExpiredActiveAssignments } from '../db/assignments.js';
 import { pruneEvents } from '../db/events.js';
 import { getExecutor, listStaleExecutors, updateExecutor } from '../db/executors.js';
 import { pruneIdempotencyRecords } from '../db/idempotency.js';
 import { writeTransaction } from '../db/transaction.js';
+import { publish } from '../http/route-utils.js';
 import type { ServerContext } from '../types.js';
 
 function isoAt(epochMs: number): string {
@@ -61,14 +61,10 @@ export class Sweepers {
     this.inFlight = promise;
   }
 
-  private readonly publish = (events: readonly EventEnvelope[]): void => {
-    this.ctx.hub.broadcast(events);
-  };
-
   private expireLeases(nowIso: string): void {
     const expired = listExpiredActiveAssignments(this.ctx.db, nowIso);
     if (expired.length === 0) return;
-    writeTransaction(this.ctx.db, this.publish, (tx) => {
+    writeTransaction(this.ctx.db, publish(this.ctx), (tx) => {
       for (const assignment of expired) {
         endAssignment(tx, assignment, 'expired', 'assignment.expired', {
           reason: 'lease_expired',
@@ -79,7 +75,7 @@ export class Sweepers {
 
   private takeOfflineExecutors(cutoffIso: string): void {
     for (const record of listStaleExecutors(this.ctx.db, cutoffIso)) {
-      writeTransaction(this.ctx.db, this.publish, (tx) => {
+      writeTransaction(this.ctx.db, publish(this.ctx), (tx) => {
         const fresh = getExecutor(this.ctx.db, record.executor.id);
         if (fresh === null || fresh.executor.presence === 'offline') return;
         if (fresh.lastHeartbeatAt !== null && fresh.lastHeartbeatAt >= cutoffIso) return;

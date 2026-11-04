@@ -3,6 +3,7 @@ import { WebSocket } from 'ws';
 import type { EventEnvelope } from '@sap-superagent/protocol';
 import {
   api,
+  createAdminTask,
   createDemandWithArtifact,
   readEvents,
   startTestServer,
@@ -175,6 +176,53 @@ describe('control-plane WebSocket event stream', () => {
       socket.once('error', () => undefined);
     });
     expect(closed.code).toBe(4401);
+  });
+
+  it('offers newly created tasks as a transport frame, not as a persisted event', async () => {
+    const { demandId } = await createDemandWithArtifact(server);
+    const { lastSeq } = await readEvents(server);
+    const probe = await openProbe(socketUrl(server, server.userToken, lastSeq));
+    try {
+      const created = await createAdminTask(server, {
+        demandId,
+        title: 'R-9004 offered task',
+        executorKind: 'vscode',
+        requiredRoles: [],
+      });
+      expect(created.status).toBe(200);
+
+      const frame = await probe.waitFor((message) => message.type === 'task.offered');
+      expect(frame.subject).toEqual({ type: 'task', id: created.body.task.id });
+      expect(frame.task).toMatchObject({
+        id: created.body.task.id,
+        executorKind: 'vscode',
+        priority: 'normal',
+        workspaceBinding: null,
+      });
+      // Transport-only hint: no cursor, and never persisted in the event log.
+      expect(frame.seq).toBeUndefined();
+      const events = await readEvents(server, 0);
+      expect(events.events.map((event) => event.type)).not.toContain('task.offered');
+    } finally {
+      probe.socket.close();
+    }
+  });
+
+  it('sends periodic server.ping keep-alives', async () => {
+    const pingServer = await startTestServer({ overrides: { wsPingMs: 30 } });
+    try {
+      const { lastSeq } = await readEvents(pingServer);
+      const probe = await openProbe(socketUrl(pingServer, pingServer.userToken, lastSeq));
+      try {
+        const ping = await probe.waitFor((message) => message.type === 'server.ping');
+        expect(ping.seq).toBe(lastSeq);
+        expect(typeof ping.at).toBe('string');
+      } finally {
+        probe.socket.close();
+      }
+    } finally {
+      await pingServer.dispose();
+    }
   });
 
   it('sends a resync frame when the cursor fell outside the retention window', async () => {

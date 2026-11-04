@@ -10,6 +10,8 @@ import {
   wsClientMessageSchema,
   wsConnectQuerySchema,
   type EventEnvelope,
+  type Task,
+  type WsTaskOfferedFrame,
 } from '@sap-superagent/protocol';
 import { verifyToken } from '../auth.js';
 import { eventSeqWindow, listEventsAfter } from '../db/events.js';
@@ -60,6 +62,34 @@ export class EventSocketHub {
     for (const client of this.clients) {
       if (client.readyState !== WebSocket.OPEN) continue;
       for (const frame of frames) client.send(frame);
+    }
+  }
+
+  /**
+   * Offer a claimable task to connected clients (`task.offered`). This is a
+   * transport-only hint: it is NOT written to the event log (docs/003 §2.3), so
+   * it carries no `seq`; clients pull authoritative state over REST.
+   */
+  broadcastTaskOffered(task: Task, at: string): void {
+    if (this.closed || this.clients.size === 0) return;
+    const frame: WsTaskOfferedFrame = {
+      type: 'task.offered',
+      at,
+      subject: { type: 'task', id: task.id },
+      task: {
+        id: task.id,
+        demandId: task.demandId,
+        title: task.title,
+        executorKind: task.executorKind,
+        requiredRoles: task.requiredRoles,
+        workspaceBinding: task.workspaceBinding,
+        priority: task.priority,
+        dueAt: task.dueAt,
+      },
+    };
+    const payload = JSON.stringify(frame);
+    for (const client of this.clients) {
+      if (client.readyState === WebSocket.OPEN) client.send(payload);
     }
   }
 

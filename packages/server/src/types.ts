@@ -20,6 +20,10 @@ export interface ServerOptions {
   stagePollMs?: number;
   logger?: boolean;
   version?: string;
+  /** Environment to resolve from; defaults to process.env merged over `<cwd>/.env`. */
+  env?: NodeJS.ProcessEnv;
+  /** WS keep-alive ping interval (default 20s). */
+  wsPingMs?: number;
 }
 
 export interface RunningServer {
@@ -45,6 +49,7 @@ export interface ServerConfig {
   stagePollMs: number;
   logger: boolean;
   version: string;
+  wsPingMs: number;
 }
 
 /** Shared, immutable-per-server services passed to routes and workers. */

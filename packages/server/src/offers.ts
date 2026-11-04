@@ -39,5 +39,5 @@ export function listEligiblePendingTasks(
     });
     return eligibility.eligible;
   });
-  return rankTasks(eligible);
+  return rankTasks(eligible, { forUserId: executor.user });
 }

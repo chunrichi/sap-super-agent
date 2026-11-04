@@ -15,6 +15,16 @@
     "skipLibCheck": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@sap-superagent/protocol": ["packages/protocol/src/index.ts"],
+      "@sap-superagent/core": ["packages/core/src/index.ts"],
+      "@sap-superagent/ai": ["packages/ai/src/index.ts"],
+      "@sap-superagent/server": ["packages/server/src/index.ts"],
+      "@sap-superagent/sap-adapter": ["packages/sap-adapter/src/index.ts"],
+      "@sap-superagent/cli": ["packages/cli/src/index.ts"],
+      "@sap-superagent/testkit": ["packages/testkit/src/index.ts"]
+    }
   }
 }

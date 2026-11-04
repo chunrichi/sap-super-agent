@@ -1,0 +1,23 @@
+{
+  "name": "@sap-superagent/protocol",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Protocol: zod schemas, TS types, event envelope, error body, templates.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json",
+    "check": "pnpm run typecheck && pnpm run test"
+  },
+  "dependencies": {"ulid":"^3.0.2","zod":"^4.6.7"}
+}

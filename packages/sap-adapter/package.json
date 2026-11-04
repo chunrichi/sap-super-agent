@@ -1,0 +1,25 @@
+{
+  "name": "@sap-superagent/sap-adapter",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "SAP ICF JSON client, webhook signature, field mapping, reconcile (H2).",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "build": "tsc -p tsconfig.build.json",
+    "check": "pnpm run typecheck && pnpm run test"
+  },
+  "dependencies": {
+    "@sap-superagent/protocol": "workspace:*"
+  }
+}

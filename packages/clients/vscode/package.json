@@ -1,0 +1,63 @@
+{
+  "name": "sap-superagent-vscode",
+  "displayName": "SAP Super Agent",
+  "description": "Task inbox for SAP Super Agent: claim tasks, open context packs, report artifacts.",
+  "version": "0.0.0",
+  "private": true,
+  "publisher": "sap-superagent",
+  "type": "module",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other"],
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      { "command": "sapSuperAgent.connect", "title": "SAP Super Agent: 连接控制平面" },
+      { "command": "sapSuperAgent.bindWorkspace", "title": "SAP Super Agent: 绑定当前工作区" },
+      { "command": "sapSuperAgent.claimTask", "title": "SAP Super Agent: 领取任务" },
+      { "command": "sapSuperAgent.openTask", "title": "SAP Super Agent: 打开任务" },
+      { "command": "sapSuperAgent.submitArtifact", "title": "SAP Super Agent: 提交工件" },
+      { "command": "sapSuperAgent.toggleAccepting", "title": "SAP Super Agent: 暂停/恢复接单" }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "sapSuperAgent",
+          "title": "SAP Super Agent",
+          "icon": "$(inbox)"
+        }
+      ]
+    },
+    "views": {
+      "sapSuperAgent": [
+        { "id": "sapSuperAgent.inbox", "name": "任务箱" }
+      ]
+    },
+    "configuration": {
+      "title": "SAP Super Agent",
+      "properties": {
+        "sapSuperAgent.controlPlaneUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:3080",
+          "description": "控制平面地址（M1 本地模式默认）"
+        },
+        "sapSuperAgent.accepting": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否接受新任务"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json",
+    "check": "pnpm run typecheck && pnpm run test"
+  },
+  "dependencies": {
+    "@sap-superagent/protocol": "workspace:*"
+  }
+}

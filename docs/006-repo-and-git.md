@@ -9,6 +9,7 @@ sap-superagent/
 ├─ README.md                    # 项目是什么、快速开始、文档索引
 ├─ HANDOFF.md                   # 交给执行 Agent 的任务书（S0/S1/S2）
 ├─ handoffs/                    # 任务书与状态看板（H0/H1/H2、STATUS.md）
+├─ demo/                        # 设计演示（单文件 HTML + 海报，可在浏览器打开）
 ├─ AGENTS.md                    # AI Agent 协作规范（已有原则 + 本仓库约定）
 ├─ LICENSE                      # Apache-2.0（v1 决定；专利授权对企业更友好）
 ├─ NOTICE                       # 第三方许可声明（含 abap-cli skills 的 MIT 来源）

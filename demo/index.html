@@ -1,0 +1,1134 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAP Super Agent · 设计演示</title>
+<meta name="description" content="SAP Super Agent 设计演示：需求在 SAP，编排在控制平面，编码在 VSCode，文档由服务端 AI 主动完成。">
+<style>
+:root{
+  --bg:#070910;
+  --bg2:#0b0f19;
+  --panel:#0d121c;
+  --panel2:#111827;
+  --line:#1f2a3d;
+  --line2:#2a3a59;
+  --text:#e9eef8;
+  --muted:#8d9ab0;
+  --dim:#5b6a83;
+  --sap:#3b82f6;
+  --cp:#8b5cf6;
+  --vs:#22a6f2;
+  --ai:#34d399;
+  --gate:#fbbf24;
+  --danger:#fb7185;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Hiragino Sans GB","Noto Sans SC","Microsoft YaHei",sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:
+    radial-gradient(1100px 700px at 12% -12%,#0e2036 0%,transparent 58%),
+    radial-gradient(900px 650px at 92% 4%,#1d1433 0%,transparent 55%),
+    radial-gradient(900px 600px at 50% 115%,#0c1c1a 0%,transparent 60%),
+    var(--bg);
+  color:var(--text);font-family:var(--sans);
+  -webkit-font-smoothing:antialiased;overflow:hidden;
+}
+button{font-family:inherit}
+.app{height:100dvh;display:flex;flex-direction:column;position:relative}
+
+/* ---------- top bar ---------- */
+.topbar{position:relative;height:64px;flex:0 0 64px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 clamp(16px,3vw,40px);z-index:30}
+.progress{position:absolute;left:0;top:0;height:2px;width:100%;background:#141b28;overflow:hidden}
+.progress span{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left;
+  background:linear-gradient(90deg,var(--sap),var(--cp) 55%,var(--ai))}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand-mark{width:22px;height:22px;border-radius:7px;background:linear-gradient(135deg,var(--sap),var(--cp));
+  box-shadow:0 0 24px -6px var(--sap);position:relative;flex:0 0 auto}
+.brand-mark::after{content:"";position:absolute;inset:6px;border-radius:3px;border:1px solid rgba(255,255,255,.7)}
+.brand-name{font-size:14px;font-weight:650;letter-spacing:-.01em;white-space:nowrap}
+.brand-sub{font:600 10px var(--mono);letter-spacing:.16em;color:var(--dim);text-transform:uppercase;white-space:nowrap}
+.controls{display:flex;align-items:center;gap:6px}
+.scene-count{font:600 11px var(--mono);color:var(--dim);margin-right:8px;letter-spacing:.08em}
+.scene-count b{color:var(--text);font-weight:600}
+.ctl{height:30px;min-width:30px;padding:0 10px;border-radius:8px;border:1px solid var(--line);background:#0b111b;
+  color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;transition:.2s}
+.ctl:hover{border-color:var(--line2);color:var(--text);background:#101827}
+.ctl:active{transform:translateY(1px)}
+
+/* ---------- stage ---------- */
+main.stage{position:relative;flex:1 1 auto;overflow:hidden}
+main.stage::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
+  background-image:radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);background-size:30px 30px;
+  -webkit-mask-image:radial-gradient(900px 600px at 50% 40%,#000 20%,transparent 80%);mask-image:radial-gradient(900px 600px at 50% 40%,#000 20%,transparent 80%);opacity:.35}
+.scene{position:relative;z-index:1}
+.scene{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:auto;
+  padding:clamp(18px,3.2vh,44px) clamp(18px,4vw,64px);
+  opacity:0;visibility:hidden;transform:translateY(16px);transition:opacity .5s ease,transform .5s ease,visibility .5s}
+.scene.active{opacity:1;visibility:visible;transform:none}
+.wrap{width:min(1160px,100%);margin:auto 0}
+
+[data-reveal]{opacity:0}
+.scene.active [data-reveal]{animation:rise .7s cubic-bezier(.2,.7,.2,1) both;animation-delay:var(--d,0ms)}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes pop{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.06);opacity:1}100%{transform:scale(1);opacity:1}}
+@keyframes moveX{from{left:6%}to{left:94%}}
+@keyframes moveXr{from{left:94%}to{left:6%}}
+@keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+@keyframes breathe{0%,100%{box-shadow:0 0 0 0 rgba(52,211,153,.0)}50%{box-shadow:0 0 28px -6px rgba(52,211,153,.45)}}
+
+.kicker{font:600 11px/1.4 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+h2{margin:10px 0 6px;font-size:clamp(25px,3vw,38px);line-height:1.12;letter-spacing:-.02em}
+.scene-sub{margin:0;color:var(--muted);font-size:clamp(13px,1.1vw,15px);line-height:1.6;max-width:760px}
+.mono{font-family:var(--mono)}
+
+/* ---------- hero ---------- */
+.hero-wrap{display:flex;flex-direction:column;gap:0}
+.hero h1{margin:14px 0 16px;font-size:clamp(34px,5.2vw,66px);line-height:1.07;letter-spacing:-.04em;font-weight:690}
+.hero h1 span{background:linear-gradient(100deg,var(--sap),var(--cp) 52%,var(--ai));-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero .lead{margin:0;color:var(--muted);font-size:clamp(14px,1.35vw,17px);line-height:1.65;max-width:640px}
+.hero-flow{display:grid;grid-template-columns:1fr 46px 1fr 46px 1fr;align-items:center;gap:0;margin-top:34px}
+.node{padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,0));min-width:0}
+.node .k{font:600 10px var(--mono);letter-spacing:.12em;color:var(--dim);text-transform:uppercase}
+.node .t{font-size:14px;font-weight:650;margin-top:5px}
+.node .d{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.45}
+.wire{position:relative;height:1px;background:linear-gradient(90deg,transparent,var(--line2),transparent)}
+.wire i{position:absolute;top:50%;width:6px;height:6px;border-radius:50%;transform:translateY(-50%);background:var(--sap);box-shadow:0 0 10px var(--sap);animation:moveX 2.8s linear infinite}
+.wire.rev i{animation-name:moveXr;background:var(--ai);box-shadow:0 0 10px var(--ai)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:30px}
+.chip{font-size:12px;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:#0b1019;color:#c3cfe3}
+.chip b{color:var(--text);font-weight:650}
+.hint{margin-top:26px;color:var(--dim);font:11px var(--mono);letter-spacing:.04em}
+
+/* ---------- architecture ---------- */
+.stack{display:flex;flex-direction:column;margin-top:26px}
+.stack-row{position:relative;display:flex;align-items:center;gap:18px;padding:15px 18px;border:1px solid var(--line);
+  border-radius:15px;background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,0));overflow:hidden}
+.stack-row::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.7;
+  background:radial-gradient(360px 100px at 8% 0%,var(--glow,rgba(59,130,246,.14)),transparent 70%)}
+.stack-row .row-title{display:flex;flex-direction:column;gap:2px;min-width:158px;position:relative}
+.row-title .tag{font:600 10px var(--mono);letter-spacing:.14em;color:var(--dim);text-transform:uppercase}
+.row-title b{font-size:15px;letter-spacing:-.01em}
+.row-items{display:flex;flex-wrap:wrap;gap:7px;position:relative}
+.stack-gap{position:relative;height:56px;display:flex;flex-direction:column;justify-content:center;gap:7px;padding-left:176px}
+.flow-line{position:relative;height:1px;background:linear-gradient(90deg,transparent,var(--line) 12%,var(--line) 88%,transparent)}
+.flow-line i{position:absolute;top:50%;width:5px;height:5px;border-radius:50%;transform:translateY(-50%);
+  background:var(--sap);box-shadow:0 0 9px var(--sap);animation:moveX 3.2s linear infinite}
+.flow-line.rev i{animation-name:moveXr;background:var(--ai);box-shadow:0 0 9px var(--ai)}
+.flow-line em{position:absolute;left:50%;top:8px;transform:translateX(-50%);font:10.5px var(--mono);font-style:normal;color:var(--dim);white-space:nowrap}
+.concepts{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:20px;font-size:12px;color:var(--muted);line-height:1.7}
+.concepts b{color:var(--text);font-weight:600}
+.dot-sap{color:var(--sap)}.dot-cp{color:var(--cp)}.dot-vs{color:var(--vs)}.dot-ai{color:var(--ai)}
+
+/* ---------- domain ---------- */
+.domain{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:20px}
+.entity{border:1px solid var(--line);border-left:2px solid var(--tint,var(--line2));border-radius:12px;padding:13px 14px;
+  background:rgba(255,255,255,.017)}
+.entity .e-k{font:600 10px var(--mono);letter-spacing:.1em;color:var(--dim);text-transform:uppercase}
+.entity b{display:block;font-size:14px;margin:3px 0 4px;letter-spacing:-.01em}
+.entity p{margin:0;font-size:11.5px;color:var(--muted);line-height:1.55}
+.entity .flow{margin-top:7px;font:10px var(--mono);color:#8ea2c2;letter-spacing:.01em}
+.protocol-strip{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px;padding:11px 12px;border:1px solid var(--line);border-radius:11px;
+  background:#0b1019;font:10.5px var(--mono);color:#a9b8d0;letter-spacing:.02em}
+.protocol-strip b{color:var(--text);font-weight:600}
+.domain-foot{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:12px;font-size:11.5px;color:var(--muted)}
+.domain-foot b{color:var(--text);font-weight:600}
+
+/* ---------- modes ---------- */
+.tabs{display:inline-flex;gap:5px;padding:4px;border:1px solid var(--line);border-radius:12px;background:#0a0f18;margin:18px 0 18px}
+.tab{border:0;background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;padding:8px 14px;border-radius:8px;cursor:pointer;transition:.22s;white-space:nowrap}
+.tab:hover{color:var(--text)}
+.tab.on{background:linear-gradient(180deg,#1b2740,#131b2b);color:var(--text);box-shadow:inset 0 0 0 1px var(--line2)}
+.mode{display:none}
+.mode.on{display:block;animation:rise .4s ease both}
+.mode-diagram{display:grid;grid-template-columns:1fr 44px 1fr 44px 1fr;align-items:center;gap:0;margin-top:4px}
+.mode-diagram .wire i{animation-duration:3s}
+.mode-note{display:flex;gap:18px;flex-wrap:wrap;margin-top:16px;font-size:12.5px;color:var(--muted)}
+.mode-note b{color:var(--text);font-weight:600}
+.mode-note .warn{color:var(--gate)}
+
+/* ---------- pipeline ---------- */
+.pipeline{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px;margin-top:20px}
+.stage-card{position:relative;display:flex;flex-direction:column;gap:5px;min-height:128px;padding:13px 12px;
+  border:1px solid var(--line);border-radius:13px;background:#0c111a;transition:transform .35s,border-color .35s,background .35s}
+.stage-card .n{font:600 10px var(--mono);color:var(--dim);letter-spacing:.1em}
+.stage-card .t{font-size:13px;font-weight:650;line-height:1.35}
+.stage-card .x{margin-top:auto;font-size:11px;color:var(--muted);line-height:1.45}
+.stage-card .g{align-self:flex-start;font:600 10px var(--mono);padding:2px 6px;border-radius:5px;
+  border:1px solid #3b3320;background:#1b180f;color:var(--gate)}
+.stage-card .g.none{color:var(--dim);border-color:var(--line);background:#0e1420}
+.stage-card.done{border-color:#1e3a33;background:#0a1613}
+.stage-card.cur{transform:translateY(-3px);border-color:#4c3f86;background:#121023;
+  box-shadow:0 0 0 1px rgba(139,92,246,.25),0 18px 44px -24px rgba(139,92,246,.8)}
+.stage-detail{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:14px;padding:15px 16px;
+  border:1px solid var(--line);border-radius:13px;background:rgba(255,255,255,.017)}
+.stage-detail .lbl{font:600 10px var(--mono);letter-spacing:.12em;color:var(--dim);margin-bottom:5px;text-transform:uppercase}
+.stage-detail .val{font-size:13.5px;line-height:1.5}
+.stage-detail .gate-line{grid-column:1 / -1;display:flex;align-items:center;gap:10px;border-top:1px solid var(--line);padding-top:11px;margin-top:2px}
+.stage-detail.swap{animation:fadeSwap .38s ease}
+@keyframes fadeSwap{from{opacity:.3;transform:translateY(4px)}to{opacity:1;transform:none}}
+.stamp{display:inline-flex;align-items:center;gap:6px;color:var(--gate);font:600 11px var(--mono);letter-spacing:.06em;
+  border:1px dashed #4a3f1c;background:#171307;border-radius:6px;padding:4px 8px}
+.stamp.pop{animation:pop .5s cubic-bezier(.2,.8,.2,1) both}
+.stage-detail .note{color:var(--muted);font-size:12px}
+
+/* ---------- dispatch ---------- */
+.dispatch{display:grid;grid-template-columns:1.02fr .92fr 1.06fr;gap:12px;margin-top:20px;align-items:start}
+.panel{border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.017);padding:14px;min-height:232px}
+.panel h3{margin:0 0 10px;font:600 10px var(--mono);letter-spacing:.14em;color:var(--dim);text-transform:uppercase}
+.task-chip{border:1px solid var(--line);border-radius:11px;padding:10px 11px;background:#0c111a;margin-bottom:8px;transition:.3s}
+.task-chip .id{font:10px var(--mono);color:var(--dim)}
+.task-chip .t{font-size:13px;font-weight:600;margin:2px 0}
+.task-chip .s{font-size:11px;color:var(--muted)}
+.task-chip.taken{border-color:#2a3f60;background:#0d1726}
+.task-chip.done{border-color:#1e3a33;background:#0a1613}
+.exec-card{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:11px;
+  background:#0c111a;margin-bottom:8px;transition:.35s;position:relative}
+.exec-card .av{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:11px;font-weight:700;
+  background:#182236;color:#b9c8df;flex:0 0 auto}
+.exec-card .nm{font-size:12.5px;font-weight:600}
+.exec-card .st{font-size:10.5px;color:var(--muted);margin-top:1px}
+.exec-card .ring{margin-left:auto;width:26px;height:26px;flex:0 0 auto;opacity:0;transition:.3s}
+.exec-card.online{border-color:#1d3a33;background:#0a1512}
+.exec-card.online .av{background:#10241f;color:#7ce3b8}
+.exec-card.busy{border-color:#2f3a66;background:#0d1320;box-shadow:0 0 0 1px rgba(59,130,246,.12)}
+.exec-card.busy .ring{opacity:1;animation:ring 2s linear infinite}
+.exec-card.offline{opacity:.42;filter:saturate(.35)}
+.exec-card.ai{border-color:#1e3a33;background:#0a1613;animation:breathe 4s ease-in-out infinite}
+.ring circle{fill:none;stroke-width:2.4}
+.ring .bg{stroke:#233149}
+.ring .fg{stroke:var(--ai);stroke-dasharray:56 56;stroke-dashoffset:0;animation:dash 2s linear infinite}
+@keyframes dash{from{stroke-dashoffset:0}to{stroke-dashoffset:-112}}
+@keyframes ring{0%,100%{transform:rotate(0)}50%{transform:rotate(180deg)}}
+.log{display:flex;flex-direction:column;gap:0;min-height:232px}
+.dispatch-event{display:flex;gap:10px;padding:5px 0 5px 12px;border-left:1px solid var(--line);
+  opacity:0;transform:translateX(-6px);transition:opacity .4s,transform .4s}
+.dispatch-event.on{opacity:1;transform:none}
+.dispatch-event time{font:10px var(--mono);color:var(--dim);flex:0 0 34px;padding-top:1px}
+.dispatch-event span{font-size:11.5px;color:#b7c4d9;line-height:1.45}
+.dispatch-event.on{border-left-color:var(--sap)}
+.dispatch-foot{margin-top:10px;font-size:11px;color:var(--dim)}
+.dispatch-foot b{color:var(--ai);font-weight:600}
+
+/* ---------- pdo ---------- */
+.pdo{display:grid;grid-template-columns:1fr 54px 1fr;gap:8px;align-items:start;margin-top:18px}
+.pdo h3{margin:0 0 10px;font:600 10px var(--mono);letter-spacing:.14em;color:var(--dim);text-transform:uppercase}
+.before-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+.before-list li{display:flex;align-items:center;gap:8px;padding:6px 9px;border:1px solid var(--line);border-radius:8px;
+  background:#0b1019;font-size:12px;color:#b9c5d8;transition:.3s}
+.before-list li .btn{margin-left:auto;font:10px var(--mono);color:var(--dim);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+.scene.active .before-list li{animation:dimOut .6s ease both;animation-delay:calc(var(--i) * 180ms + 900ms)}
+@keyframes dimOut{to{opacity:.24;filter:saturate(.3)}}
+.pdo-arrow{display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:20px;padding-top:60px}
+.after-list{display:flex;flex-direction:column;gap:6px}
+.after-list li{list-style:none;display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);
+  border-radius:9px;background:#0c111a;font-size:12px;opacity:0;transform:translateX(-8px);
+  animation:slideIn .55s cubic-bezier(.2,.7,.2,1) both;animation-delay:calc(var(--i) * 160ms + 300ms)}
+.scene.active .after-list li{animation-name:slideIn}
+@keyframes slideIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+.after-list li b{font-weight:650}
+.after-list .gate{margin-left:auto;font:600 10px var(--mono);color:var(--gate);border:1px solid #3b3320;border-radius:5px;padding:1px 5px;background:#1b180f}
+.pdo-notes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:15px}
+.pdo-note{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:rgba(255,255,255,.017);font-size:12px;color:var(--muted)}
+.pdo-note b{display:block;color:var(--text);font-size:12.5px;margin-bottom:3px}
+.pdo-foot{margin-top:12px;font-size:11.5px;color:var(--dim)}
+
+/* ---------- client ---------- */
+.client{display:grid;grid-template-columns:.92fr 1.18fr .9fr;gap:12px;margin-top:18px;align-items:stretch}
+.mock{border:1px solid var(--line);border-radius:13px;background:#0b1019;overflow:hidden;display:flex;flex-direction:column;min-height:300px}
+.mock-bar{display:flex;align-items:center;gap:6px;padding:9px 11px;border-bottom:1px solid var(--line);background:#0d1320}
+.mock-bar .d{width:7px;height:7px;border-radius:50%;background:#2a3550}
+.mock-bar .t{margin-left:6px;font:10.5px var(--mono);color:var(--dim);letter-spacing:.06em}
+.mock-body{padding:10px 11px;display:flex;flex-direction:column;gap:7px}
+.side-title{font:600 10px var(--mono);letter-spacing:.12em;color:var(--dim);margin-bottom:2px}
+.side-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;border:1px solid transparent;font-size:11.5px;color:#b9c5d8}
+.side-item.on{border-color:var(--line2);background:#111a29}
+.side-item .badge{margin-left:auto;font:10px var(--mono);color:var(--dim);background:#141d2d;padding:1px 5px;border-radius:4px}
+.side-foot{margin-top:auto;padding:8px 11px;border-top:1px solid var(--line);font:10.5px var(--mono);color:var(--ai)}
+.chat{display:flex;flex-direction:column;gap:8px}
+.bubble{max-width:92%;padding:8px 10px;border-radius:10px;font-size:11.8px;line-height:1.5;opacity:0;animation:rise .5s ease both;animation-delay:var(--d,0ms)}
+.bubble.user{align-self:flex-end;background:#142338;border:1px solid #243b5e;color:#d7e4f7}
+.bubble.ai{align-self:flex-start;background:#0e1a18;border:1px solid #1e3a33;color:#cfe9df}
+.bubble.tool{align-self:flex-start;background:#121023;border:1px solid #32285c;color:#cfc3ff;font:10.5px var(--mono)}
+.guards{display:flex;flex-direction:column;gap:7px}
+.guard{border:1px solid var(--line);border-radius:9px;padding:8px 10px;background:#0b1019;font-size:11.5px;color:#b9c5d8;line-height:1.45}
+.guard b{display:block;color:var(--text);font-size:12px;margin-bottom:2px}
+.guard.warn{border-color:#3d3320}
+
+/* ---------- security ---------- */
+.security{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px}
+.lane{border:1px solid var(--line);border-radius:13px;padding:14px;background:rgba(255,255,255,.017);min-height:196px}
+.lane h3{margin:0 0 10px;font:600 10px var(--mono);letter-spacing:.14em;color:var(--dim);text-transform:uppercase}
+.lane .chain{display:flex;align-items:center;gap:8px;font-size:12px;color:#c3d0e4;margin-bottom:8px;flex-wrap:wrap}
+.lane .chain .box{border:1px solid var(--line);border-radius:7px;padding:5px 8px;background:#0b1019}
+.lane .chain .x{color:var(--danger);font-weight:700}
+.lane .chain .ok{color:var(--ai);font-weight:700}
+.lane p{margin:8px 0 0;font-size:11.5px;color:var(--muted);line-height:1.6}
+.sec-line{margin-top:16px;display:flex;flex-wrap:wrap;gap:8px}
+.sec-pill{font-size:11.5px;color:#c3d0e4;border:1px solid var(--line);border-radius:999px;padding:6px 11px;background:#0b1019}
+.sec-pill b{color:var(--text);font-weight:600}
+
+/* ---------- roadmap ---------- */
+.roadmap{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px}
+.road{border:1px solid var(--line);border-radius:13px;padding:14px;background:rgba(255,255,255,.017);position:relative;overflow:hidden}
+.road::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--rail,var(--line2))}
+.road .id{font:600 10px var(--mono);letter-spacing:.12em;color:var(--dim)}
+.road h3{margin:6px 0 3px;font-size:14.5px;letter-spacing:-.01em}
+.road .status{font-size:11.5px;color:var(--muted);margin-bottom:8px}
+.road .status b{color:var(--ai);font-weight:600}
+.road .status .wait{color:var(--gate)}
+.road ul{margin:0;padding-left:15px;font-size:11.5px;color:var(--muted);line-height:1.65}
+.handoff-bar{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.handoff-bar span{font:10.5px var(--mono);color:#b9c5d8;border:1px solid var(--line);border-radius:6px;padding:5px 8px;background:#0b1019}
+.final{margin-top:16px;font-size:12px;color:var(--dim)}
+.final b{color:var(--text)}
+
+/* ---------- footer ---------- */
+.foot{flex:0 0 54px;display:flex;align-items:center;justify-content:center;gap:10px;position:relative;z-index:30}
+.dots{display:flex;align-items:center;gap:8px}
+.dot{width:7px;height:7px;padding:0;border:0;border-radius:999px;background:#2a3346;cursor:pointer;transition:.25s}
+.dot:hover{background:#3d4a63}
+.dot.on{width:24px;background:linear-gradient(90deg,var(--sap),var(--cp))}
+
+/* ---------- static mode (screenshots / reduced animation) ---------- */
+html.static *, html.static *::before, html.static *::after{animation:none!important;transition:none!important}
+html.static .scene{opacity:0!important;visibility:hidden!important;transform:none!important}
+html.static .scene.active{opacity:1!important;visibility:visible!important}
+html.static [data-reveal]{opacity:1!important}
+html.static .bubble, html.static .after-list li, html.static .dispatch-event{opacity:1!important;transform:none!important;animation:none!important}
+html.static .flow-line i, html.static .wire i{left:50%!important}
+html.static .dispatch-event.on{opacity:1!important;transform:none!important}
+
+/* ---------- responsive ---------- */
+@media (max-width:960px){
+  .hero-flow{grid-template-columns:1fr;gap:8px}
+  .wire{height:16px;width:1px;margin:0 auto;background:linear-gradient(180deg,transparent,var(--line2),transparent)}
+  .wire i{left:50%;top:auto;animation:moveY 2.8s linear infinite}
+  @keyframes moveY{from{top:2%}to{top:94%}}
+  .stack-gap{padding-left:0}
+  .flow-line em{display:none}
+  .mode-diagram{grid-template-columns:1fr;gap:8px}
+  .pipeline{grid-template-columns:repeat(3,1fr)}
+  .stage-detail{grid-template-columns:1fr}
+  .dispatch,.client,.security,.roadmap,.pdo,.pdo-notes{grid-template-columns:1fr}
+  .pdo-arrow{padding:0;transform:rotate(90deg)}
+}
+@media (max-height:700px){
+  h2{font-size:clamp(22px,2.6vw,30px)}
+  .stage-card{min-height:110px}
+  .mock{min-height:240px}
+  .panel,.log{min-height:200px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="topbar">
+    <div class="progress"><span id="bar"></span></div>
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">SAP Super Agent</span>
+      <span class="brand-sub">设计演示</span>
+    </div>
+    <div class="controls">
+      <span class="scene-count"><b id="sceneNow">01</b> / <span id="sceneTotal">09</span></span>
+      <button class="ctl" id="btnReplay" aria-label="重播" title="重播">↺</button>
+      <button class="ctl" id="btnPrev" aria-label="上一幕">←</button>
+      <button class="ctl" id="btnPlay" aria-label="暂停或继续">暂停</button>
+      <button class="ctl" id="btnNext" aria-label="下一幕">→</button>
+    </div>
+  </header>
+
+  <main class="stage" id="stage">
+
+    <!-- 00 hero -->
+    <section class="scene active" data-title="定位" data-duration="6800">
+      <div class="wrap hero-wrap hero">
+        <div class="kicker" data-reveal>DESIGN STORYBOARD · 2026-11</div>
+        <h1 data-reveal style="--d:80ms">需求在 SAP，<br>编排在控制平面，<span>编码在 VSCode。</span></h1>
+        <p class="lead" style="--d:180ms" data-reveal>重复的文档工作由服务端 AI 主动完成；需要人时，只出现在门禁与开发任务上。</p>
+        <div class="hero-flow" data-reveal style="--d:280ms">
+          <div class="node">
+            <div class="k">需求平面</div>
+            <div class="t">SAP · ICF + MIME</div>
+            <div class="d">需求、审批、审计都在 SAP</div>
+          </div>
+          <div class="wire"><i></i></div>
+          <div class="node">
+            <div class="k">控制平面</div>
+            <div class="t">可移植编排核心</div>
+            <div class="d">阶段机 · 门禁 · 调度 · 事件日志</div>
+          </div>
+          <div class="wire rev"><i></i></div>
+          <div class="node">
+            <div class="k">执行平面</div>
+            <div class="t">VSCode + Copilot</div>
+            <div class="d">人机协作 · 代码在本地 · BYOK 服务端 AI</div>
+          </div>
+        </div>
+        <div class="chips" data-reveal style="--d:380ms">
+          <span class="chip"><b>6</b> 个业务概念</span>
+          <span class="chip"><b>3</b> 个平面</span>
+          <span class="chip"><b>3</b> 种部署模式</span>
+          <span class="chip"><b>2</b> 类执行器</span>
+          <span class="chip"><b>1</b> 条需求线</span>
+        </div>
+        <div class="hint" data-reveal style="--d:460ms">← → 切换 · 空格 暂停 / 继续 · 点击底部圆点跳转</div>
+      </div>
+    </section>
+
+    <!-- 01 architecture -->
+    <section class="scene" data-title="架构" data-duration="11000">
+      <div class="wrap">
+        <div class="kicker" data-reveal>01 · 架构</div>
+        <h2 data-reveal style="--d:60ms">三个平面，三种真相</h2>
+        <p class="scene-sub" data-reveal style="--d:120ms">各自记录，用 ID 关联；SAP 不存执行态，控制平面不存业务真相，客户端不存会话状态。</p>
+
+        <div class="stack">
+          <div class="stack-row" style="--glow:rgba(59,130,246,.16)" data-reveal>
+            <div class="row-title"><span class="tag">需求平面</span><b>SAP</b><span class="tag" style="color:var(--dim)">业务真相</span></div>
+            <div class="row-items">
+              <span class="chip">ICF JSON API /api/*</span>
+              <span class="chip">MIME Web /ui/*</span>
+              <span class="chip">ZSA_* DDIC + outbox</span>
+              <span class="chip">审批 · SSO · 审计</span>
+            </div>
+          </div>
+          <div class="stack-gap">
+            <div class="flow-line"><i></i><em>demand.submitted · ICF JSON 回写</em></div>
+          </div>
+          <div class="stack-row" style="--glow:rgba(139,92,246,.18);--d:120ms" data-reveal>
+            <div class="row-title"><span class="tag">控制平面</span><b>Orchestrator</b><span class="tag" style="color:var(--dim)">执行真相</span></div>
+            <div class="row-items">
+              <span class="chip">REST + WS</span>
+              <span class="chip">阶段机 + 门禁</span>
+              <span class="chip">调度 + Presence/Lease</span>
+              <span class="chip">事件日志（不可变）</span>
+              <span class="chip">BYOK AI runner</span>
+            </div>
+          </div>
+          <div class="stack-gap">
+            <div class="flow-line rev"><i></i><em>task / lease · artifact · approval</em></div>
+          </div>
+          <div class="stack-row" style="--glow:rgba(34,166,242,.16);--d:240ms" data-reveal>
+            <div class="row-title"><span class="tag">执行平面</span><b>Executors</b><span class="tag" style="color:var(--dim)">代码真相</span></div>
+            <div class="row-items">
+              <span class="chip">VSCode：任务箱 + Copilot Chat</span>
+              <span class="chip">本地：worktree · abap-cli · git</span>
+              <span class="chip">服务端 AI：结构化阶段</span>
+              <span class="chip">未来：MCP · CI</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="concepts" data-reveal style="--d:360ms">
+          <span><b>6 个业务概念</b> 需求 · 阶段 · 任务 · 指派 · 工件 · 门禁</span>
+          <span><b>支撑</b> 执行器 · Hook · 事件</span>
+          <span><b>运行时</b> Presence · Lease · Workspace</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 02 domain model -->
+    <section class="scene" data-title="领域模型" data-duration="11000">
+      <div class="wrap">
+        <div class="kicker" data-reveal>02 · 领域模型</div>
+        <h2 data-reveal style="--d:60ms">六个概念，一条需求线</h2>
+        <p class="scene-sub" data-reveal style="--d:120ms">需求不存进度，由 StageRun 聚合；任务不绑定到人，claim 后才产生 Assignment 与租约。</p>
+
+        <div class="domain">
+          <div class="entity" style="--tint:var(--sap)" data-reveal>
+            <div class="e-k">Demand</div><b>需求</b>
+            <p>业务诉求与审计的根对象；状态机与模板版本一起固定。</p>
+            <div class="flow">submitted → in_progress → review → done</div>
+          </div>
+          <div class="entity" style="--tint:var(--cp);--d:100ms" data-reveal>
+            <div class="e-k">Stage / StageRun</div><b>阶段 / 阶段运行</b>
+            <p>模板声明输入、执行器与门禁；运行记录 attempt、工件与耗时。</p>
+            <div class="flow">pending → ready → running → waiting_human → done</div>
+          </div>
+          <div class="entity" style="--tint:var(--cp);--d:180ms" data-reveal>
+            <div class="e-k">Task</div><b>任务</b>
+            <p>可领取的工作单元；可空 workspaceBinding 决定通用箱还是按目录派发。</p>
+            <div class="flow">pending → claimed → in_progress → completed</div>
+          </div>
+          <div class="entity" style="--tint:var(--ai);--d:260ms" data-reveal>
+            <div class="e-k">Assignment</div><b>指派</b>
+            <p>任务与执行器的一次绑定；60s 租约、20s 续约，过期回池。</p>
+            <div class="flow">active → completed | released | expired</div>
+          </div>
+          <div class="entity" style="--tint:var(--vs);--d:340ms" data-reveal>
+            <div class="e-k">Artifact</div><b>工件</b>
+            <p>不可变版本；上游更新使下游 stale 并阻断推进。</p>
+            <div class="flow">draft → generated → in_review → approved</div>
+          </div>
+          <div class="entity" style="--tint:var(--gate);--d:420ms" data-reveal>
+            <div class="e-k">Gate / Approval</div><b>门禁 / 审批</b>
+            <p>唯一的人工卡点；一次一个明确决策，绑定工件版本。</p>
+            <div class="flow">pending → approved | rejected | withdrawn | expired</div>
+          </div>
+        </div>
+
+        <div class="protocol-strip" data-reveal style="--d:500ms">
+          <span><b>REST</b> 写操作 + Idempotency-Key</span>
+          <span><b>WS</b> 摘要推送 + seq 补齐</span>
+          <span><b>Lease</b> 60s / 续约 20s</span>
+          <span><b>Event</b> append-only + resync</span>
+          <span><b>Context</b> task/&lt;id&gt;/context.md</span>
+        </div>
+        <div class="domain-foot" data-reveal style="--d:580ms">
+          <span><b>支撑对象</b> 执行器 · Hook · 事件</span>
+          <span><b>运行时属性</b> Presence · Lease · Workspace</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 02 deployment modes -->
+    <section class="scene" data-title="部署模式" data-duration="11000">
+      <div class="wrap">
+        <div class="kicker" data-reveal>03 · 部署</div>
+        <h2 data-reveal style="--d:60ms">主进程可选，边界清晰</h2>
+        <p class="scene-sub" data-reveal style="--d:120ms">同一份编排核心，三种宿主；不把交互式 agent 循环塞进 ABAP。</p>
+
+        <div class="tabs" style="--d:180ms" data-reveal role="tablist" aria-label="部署模式">
+          <button class="tab" data-mode="m1" role="tab">M1 本地</button>
+          <button class="tab on" data-mode="m2" role="tab">M2 独立服务</button>
+          <button class="tab" data-mode="m3" role="tab">M3 SAP 内批处理</button>
+        </div>
+
+        <div class="mode" data-mode-panel="m1">
+          <div class="mode-diagram">
+            <div class="node">
+              <div class="k">单进程</div>
+              <div class="t">sap-superagent dev</div>
+              <div class="d">REST / WS · SQLite · AI runner（BYOK）</div>
+            </div>
+            <div class="wire"><i></i></div>
+            <div class="node">
+              <div class="k">本机客户端</div>
+              <div class="t">VSCode 扩展</div>
+              <div class="d">任务箱 · 上下文包 · abap-cli / git</div>
+            </div>
+            <div class="wire rev"><i></i></div>
+            <div class="node">
+              <div class="k">数据</div>
+              <div class="t">SQLite 单文件</div>
+              <div class="d">状态目录 · 备份即迁移</div>
+            </div>
+          </div>
+          <div class="mode-note"><span><b>适合</b> 个人 / 演示 / 离线评估</span><span class="warn"><b>代价</b> 机器休眠即停，不适合团队共享</span></div>
+        </div>
+
+        <div class="mode on" data-mode-panel="m2">
+          <div class="mode-diagram">
+            <div class="node">
+              <div class="k">控制平面</div>
+              <div class="t">独立服务</div>
+              <div class="d">API / WS · Postgres · AI worker · Hook worker</div>
+            </div>
+            <div class="wire"><i></i></div>
+            <div class="node">
+              <div class="k">执行平面</div>
+              <div class="t">VSCode 客户端</div>
+              <div class="d">在线心跳 · 领取任务 · 本地执行</div>
+            </div>
+            <div class="wire rev"><i></i></div>
+            <div class="node">
+              <div class="k">需求平面</div>
+              <div class="t">SAP ICF + MIME</div>
+              <div class="d">需求 / 审批 / 回写 · SSO</div>
+            </div>
+          </div>
+          <div class="mode-note"><span><b>推荐默认</b> 团队日常使用</span><span><b>代价</b> 一台常开机器 / 容器平台</span></div>
+        </div>
+
+        <div class="mode" data-mode-panel="m3">
+          <div class="mode-diagram">
+            <div class="node">
+              <div class="k">SAP 内</div>
+              <div class="t">ICF + MIME</div>
+              <div class="d">需求 · 审批 · bgRFC 批处理 AI</div>
+            </div>
+            <div class="wire"><i></i></div>
+            <div class="node">
+              <div class="k">旁路</div>
+              <div class="t">轻服务</div>
+              <div class="d">调度代理 · 事件日志 · 派单</div>
+            </div>
+            <div class="wire rev"><i></i></div>
+            <div class="node">
+              <div class="k">开发</div>
+              <div class="t">VSCode 客户端</div>
+              <div class="d">只接开发任务；不跑 SAP 内会话</div>
+            </div>
+          </div>
+          <div class="mode-note"><span><b>适合</b> 数据不出 SAP、强监管</span><span class="warn"><b>边界</b> ABAP 不跑交互式 agent 主循环</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 03 main pipeline -->
+    <section class="scene" data-title="主流程" data-hook="pipeline" data-duration="15000">
+      <div class="wrap">
+        <div class="kicker" data-reveal>04 · 主流程</div>
+        <h2 data-reveal style="--d:60ms">一条需求，六个阶段，五道门禁</h2>
+        <p class="scene-sub" data-reveal style="--d:120ms">人只在门禁出现；其余阶段按依赖自动推进。默认 3 阶段模板：分析 G1 → 开发 G3 → 验收归档 G4。</p>
+
+        <div class="pipeline">
+          <div class="stage-card" data-stage="0"><span class="n">01</span><span class="t">受理与澄清</span><span class="g none">自动</span><span class="x">服务端 AI</span></div>
+          <div class="stage-card" data-stage="1"><span class="n">02</span><span class="t">需求分析</span><span class="g">G1</span><span class="x">服务端 AI + 精修</span></div>
+          <div class="stage-card" data-stage="2"><span class="n">03</span><span class="t">开发说明</span><span class="g">G2</span><span class="x">服务端 AI</span></div>
+          <div class="stage-card" data-stage="3"><span class="n">04</span><span class="t">开发实现</span><span class="g">G3</span><span class="x">VSCode + Copilot</span></div>
+          <div class="stage-card" data-stage="4"><span class="n">05</span><span class="t">测试与验收</span><span class="g">G4</span><span class="x">AI 文档 + 执行</span></div>
+          <div class="stage-card" data-stage="5"><span class="n">06</span><span class="t">知识归档</span><span class="g">G5</span><span class="x">服务端 AI + Hook</span></div>
+        </div>
+
+        <div class="stage-detail" id="stageDetail">
+          <div><div class="lbl">谁在动</div><div class="val" id="detailActor">服务端 AI</div></div>
+          <div><div class="lbl">产出</div><div class="val" id="detailArtifact">受理结论 + 澄清问题</div></div>
+          <div><div class="lbl">人的动作</div><div class="val" id="detailHuman">无（不完整回 SAP 待办）</div></div>
+          <div class="gate-line"><span class="stamp" id="detailGate">G1 需求顾问确认</span><span class="note" id="detailNote">需求提交即自动触发</span></div>
+        </div>
+
+        <p class="scene-sub" style="margin-top:12px;font-size:12px;color:var(--dim);--d:300ms" data-reveal>PDO 六阶段是模板预设，不是写死的代码分支；上游工件更新会让下游标 stale 并阻断推进。</p>
+      </div>
+    </section>
+
+    <!-- 04 online / offline dispatch -->
+    <section class="scene" data-title="在线派单" data-hook="dispatch" data-duration="12000">
+      <div class="wrap">
+        <div class="kicker" data-reveal>05 · 派单</div>
+        <h2 data-reveal style="--d:60ms">离线不派单，但不停工</h2>
+        <p class="scene-sub" data-reveal style="--d:120ms">人工任务进可领取池：在线 + 资格 + 目录 + 租约；服务端 AI 阶段不看 presence。</p>
+
+        <div class="dispatch">
+          <div class="panel" style="--d:180ms" data-reveal>
+            <h3>可领取池</h3>
+            <div class="task-chip" id="taskT1">
+              <div class="id">T-2041 · 绑定 z-sales</div>
+              <div class="t">实现取数逻辑</div>
+              <div class="s" id="taskState">待领取</div>
+            </div>
+            <div class="task-chip">
+              <div class="id">T-1988 · 未绑定仓库</div>
+              <div class="t">评审开发说明</div>
+              <div class="s">通用任务箱</div>
+            </div>
+            <div class="dispatch-foot"><b>server-ai</b> 阶段：需求分析 running，不受开发者在线状态影响。</div>
+          </div>
+
+          <div class="panel" data-reveal style="--d:240ms">
+            <h3>执行器</h3>
+            <div class="exec-card" id="devA">
+              <div class="av">A</div>
+              <div><div class="nm">开发者 A</div><div class="st">z-sales · online</div></div>
+              <svg class="ring" viewBox="0 0 26 26" aria-hidden="true"><circle class="bg" cx="13" cy="13" r="9"/><circle class="fg" cx="13" cy="13" r="9"/></svg>
+            </div>
+            <div class="exec-card offline" id="devB">
+              <div class="av">B</div>
+              <div><div class="nm">开发者 B</div><div class="st">z-sales · offline</div></div>
+            </div>
+            <div class="exec-card ai">
+              <div class="av">AI</div>
+              <div><div class="nm">服务端 AI</div><div class="st">BYOK · 7×24 批处理</div></div>
+            </div>
+          </div>
+
+          <div class="panel log" data-reveal style="--d:300ms">
+            <h3>事件</h3>
+            <div class="dispatch-event" data-act="onlineA"><time>09:00</time><span>开发者 A 心跳在线，声明工作区 z-sales</span></div>
+            <div class="dispatch-event" data-act="claimA"><time>09:01</time><span>任务 T-2041 派发 → A claim，租约 60s</span></div>
+            <div class="dispatch-event" data-act="offlineA"><time>09:02</time><span>A 合盖离开：心跳停止</span></div>
+            <div class="dispatch-event" data-act="expire"><time>09:03</time><span>租约到期，T-2041 回池；最近持有人降权</span></div>
+            <div class="dispatch-event" data-act="onlineB"><time>09:04</time><span>B 打开匹配目录，工作区绑定生效</span></div>
+            <div class="dispatch-event" data-act="claimB"><time>09:05</time><span>T-2041 重新派发 → B claim，继续处理</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 05 PDO -->
+    <section class="scene" data-title="PDO 迁移" data-duration="10000">
+      <div class="wrap">
+        <div class="kicker" data-reveal>06 · PDO 迁移</div>
+        <h2 data-reveal style="--d:60ms">不 1:1 平移：9 个动作 → 6 个阶段</h2>
+        <p class="scene-sub" data-reveal style="--d:120ms">把“点 AI 生成 + 人工确认”重构成阶段执行 + 门禁；中间系统只留 Hook 入口。</p>
+
+        <div class="pdo">
+          <div>
+            <h3>PDO 现状</h3>
+            <ul class="before-list">
+              <li style="--i:0">业务方 web 提交需求</li>
+              <li style="--i:1">Teams webhook 通知并 assign 需求顾问</li>
+              <li style="--i:2">需求顾问进入 web 查看<span class="btn">查看</span></li>
+              <li style="--i:3">点 AI 生成需求分析<span class="btn">生成</span></li>
+              <li style="--i:4">确认 / 人工调整</li>
+              <li style="--i:5">点 AI 生成开发说明<span class="btn">生成</span></li>
+              <li style="--i:6">点 AI 生成开发<span class="btn">生成</span></li>
+              <li style="--i:7">点 AI 生成测试文档<span class="btn">生成</span></li>
+              <li style="--i:8">知识归档</li>
+            </ul>
+          </div>
+          <div class="pdo-arrow" aria-hidden="true">→</div>
+          <div>
+            <h3>新架构</h3>
+            <ul class="after-list">
+              <li style="--i:0"><b>① 受理与澄清</b> 服务端 AI<span class="gate">auto</span></li>
+              <li style="--i:1"><b>② 需求分析</b> 服务端 AI<span class="gate">G1</span></li>
+              <li style="--i:2"><b>③ 开发说明</b> 服务端 AI<span class="gate">G2</span></li>
+              <li style="--i:3"><b>④ 开发实现</b> VSCode + Copilot<span class="gate">G3</span></li>
+              <li style="--i:4"><b>⑤ 测试与验收</b> AI 文档 + 执行<span class="gate">G4</span></li>
+              <li style="--i:5"><b>⑥ 知识归档</b> 服务端 AI + Hook<span class="gate">G5</span></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="pdo-notes" data-reveal style="--d:900ms">
+          <div class="pdo-note"><b>按钮 → 阶段自动执行</b>依赖满足即运行，人不再点下一步。</div>
+          <div class="pdo-note"><b>覆盖 → 版本 + 门禁</b>工件版本、审批记录、上游变更可追溯。</div>
+          <div class="pdo-note"><b>推送 → 池 + 租约</b>离线不派单，超时回池，最近持有人降权。</div>
+        </div>
+        <p class="pdo-foot" data-reveal style="--d:1000ms">JIRA · CHARM · Confluence · Teams → 008 Hook 契约；只有需要人确认的动作才升格为门禁。</p>
+      </div>
+    </section>
+
+    <!-- 06 VSCode + Copilot -->
+    <section class="scene" data-title="客户端" data-duration="10500">
+      <div class="wrap">
+        <div class="kicker" data-reveal>07 · 客户端</div>
+        <h2 data-reveal style="--d:60ms">扩展是任务宿主，Chat 是协作界面</h2>
+        <p class="scene-sub" data-reveal style="--d:120ms">不做 Chat Participant；用 extension tools + 上下文文件 + custom agent，让 Copilot 反向调用扩展能力。</p>
+
+        <div class="client">
+          <div class="mock" data-reveal style="--d:200ms">
+            <div class="mock-bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="t">SAP SUPER AGENT</span></div>
+            <div class="mock-body">
+              <div class="side-title">我的任务</div>
+              <div class="side-item on">T-2041 实现取数逻辑 <span class="badge">2</span></div>
+              <div class="side-item">T-1988 评审开发说明</div>
+              <div class="side-title" style="margin-top:8px">等待我回答</div>
+              <div class="side-item">G1 需求分析确认</div>
+            </div>
+            <div class="side-foot">online · z-sales · 2 tasks</div>
+          </div>
+
+          <div class="mock" data-reveal style="--d:280ms">
+            <div class="mock-bar"><span class="d"></span><span class="d"></span><span class="d"></span><span class="t">COPILOT CHAT</span></div>
+            <div class="mock-body chat">
+              <div class="bubble user" style="--d:300ms">按任务上下文实现取数逻辑</div>
+              <div class="bubble tool" style="--d:900ms">sap_task_context → 读 context.md</div>
+              <div class="bubble tool" style="--d:1500ms">abap_check → 本地 abap-cli</div>
+              <div class="bubble ai" style="--d:2100ms">已生成 code_change v1，等待 G3 评审。</div>
+            </div>
+          </div>
+
+          <div class="guards" data-reveal style="--d:360ms">
+            <div class="guard"><b>6 个命令</b>连接 · 绑定 · 领取 · 打开 · 提交 · 暂停</div>
+            <div class="guard"><b>上下文文件</b>.sap-superagent/task/&lt;id&gt;/context.md</div>
+            <div class="guard"><b>写入需确认</b>push / TR / PR 由开发者确认</div>
+            <div class="guard warn"><b>Chat Participant 已废弃</b>用 extension tools / custom agent / MCP</div>
+            <div class="guard"><b>降级路径</b>Copilot 不可用时仍是任务客户端 + abap-cli</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 07 security -->
+    <section class="scene" data-title="安全与审计" data-duration="9500">
+      <div class="wrap">
+        <div class="kicker" data-reveal>08 · 安全</div>
+        <h2 data-reveal style="--d:60ms">凭据可用不可见</h2>
+        <p class="scene-sub" data-reveal style="--d:120ms">控制平面被攻破，也不等于开发者机器被接管；模型上下文里永远没有凭据。</p>
+
+        <div class="security">
+          <div class="lane" style="--d:180ms" data-reveal>
+            <h3>本地</h3>
+            <div class="chain"><span class="box">SAP / SSO 凭据</span><span class="ok">✓</span><span class="box">abap-cli · git</span></div>
+            <div class="chain"><span class="box">模型上下文</span><span class="x">✕</span><span class="box">凭据</span></div>
+            <p>写操作在本地确认；服务端只收到命令结果与工件摘要。</p>
+          </div>
+          <div class="lane" style="--d:260ms" data-reveal>
+            <h3>服务端</h3>
+            <div class="chain"><span class="box">BYOK Key</span><span class="ok">✓</span><span class="box">secret manager</span></div>
+            <div class="chain"><span class="box">客户/需求数据</span><span class="ok">✓</span><span class="box">BYOK 模型</span></div>
+            <p>自部署或已签安全协议；Key 不入库、不下发客户端、不写日志。</p>
+          </div>
+          <div class="lane" style="--d:340ms" data-reveal>
+            <h3>审计</h3>
+            <div class="chain"><span class="box">事件日志</span><span class="ok">append-only</span></div>
+            <div class="chain"><span class="box">工件</span><span class="ok">版本不可变</span><span class="box">审批</span></div>
+            <p>每次状态变化可还原：谁、何时、基于什么、改了什么。</p>
+          </div>
+        </div>
+
+        <div class="sec-line" data-reveal style="--d:440ms">
+          <span class="sec-pill"><b>提示注入</b> 任务文本视为数据，不是指令</span>
+          <span class="sec-pill"><b>写操作</b> 人工确认 + allowedSystems 白名单</span>
+          <span class="sec-pill"><b>权限</b> v1 不建模；只记录操作人</span>
+          <span class="sec-pill"><b>SSO</b> web 走 ICF 登录；服务账号独立</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 08 roadmap -->
+    <section class="scene" data-title="路线图" data-duration="12000">
+      <div class="wrap">
+        <div class="kicker" data-reveal>09 · 交接</div>
+        <h2 data-reveal style="--d:60ms">设计与交接完成，H0 → H1 / H2 开工</h2>
+        <p class="scene-sub" data-reveal style="--d:120ms">仓库已初始化（Apache-2.0 + DCO）；每个任务书都有写范围、验收命令与失败场景。</p>
+
+        <div class="roadmap">
+          <div class="road" style="--rail:var(--sap);--d:200ms" data-reveal>
+            <div class="id">H0 · S0</div>
+            <h3>Walking Skeleton</h3>
+            <div class="status"><b>执行中（新会话）</b></div>
+            <ul><li>protocol / core / server / cli</li><li>VSCode 任务箱 + 上下文包</li><li>e2e + 4 个失败场景</li></ul>
+          </div>
+          <div class="road" style="--rail:var(--cp);--d:280ms" data-reveal>
+            <div class="id">H1 · S1</div>
+            <h3>门禁与模板</h3>
+            <div class="status"><span class="wait">等待 H0</span></div>
+            <ul><li>Approval / Gate / 超时</li><li>default 3 阶段 · pdo 6 阶段</li><li>工件版本 · stale · golden set</li></ul>
+          </div>
+          <div class="road" style="--rail:var(--ai);--d:360ms" data-reveal>
+            <div class="id">H2 · S2</div>
+            <h3>SAP ICF + MIME</h3>
+            <div class="status"><span class="wait">等待 H0（DDIC 可先行）</span></div>
+            <ul><li>Z 表 · ICF JSON · MIME Web</li><li>outbox + webhook + 回写</li><li>sap-adapter · 对账</li></ul>
+          </div>
+        </div>
+
+        <div class="handoff-bar" data-reveal style="--d:460ms">
+          <span>HANDOFF.md</span><span>handoffs/H0-walking-skeleton.md</span><span>handoffs/H1-gates-and-templates.md</span><span>handoffs/H2-sap-icf-mime.md</span><span>handoffs/STATUS.md</span>
+        </div>
+        <p class="final" data-reveal style="--d:560ms"><b>docs/000–009</b> 设计权威 · <b>每项任务</b> 有验收命令 · <b>每个 Agent</b> 只改自己的写范围</p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="foot">
+    <div class="dots" id="dots" aria-label="场景导航"></div>
+  </footer>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const app = document.getElementById("app");
+  const stage = document.getElementById("stage");
+  const scenes = [...document.querySelectorAll(".scene")];
+  const dots = document.getElementById("dots");
+  const nowEl = document.getElementById("sceneNow");
+  const totalEl = document.getElementById("sceneTotal");
+  const bar = document.getElementById("bar");
+  const btnReplay = document.getElementById("btnReplay");
+  const btnPrev = document.getElementById("btnPrev");
+  const btnNext = document.getElementById("btnNext");
+  const btnPlay = document.getElementById("btnPlay");
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const params = new URLSearchParams(location.search);
+  const staticMode = params.has("static");
+  if (staticMode || reduceMotion) document.documentElement.classList.add("static");
+
+  totalEl.textContent = String(scenes.length).padStart(2, "0");
+
+  const stageData = [
+    { actor: "服务端 AI", artifact: "受理结论 + 澄清问题", human: "无（不完整回 SAP 待办）", gate: "", note: "需求提交即自动触发" },
+    { actor: "服务端 AI（+ VSCode 精修）", artifact: "requirement_analysis v1", human: "G1 需求顾问确认", gate: "G1", note: "schema + checklist 通过才算完成" },
+    { actor: "服务端 AI", artifact: "dev_spec", human: "G2 需求顾问 + 开发确认（可并入 G3）", gate: "G2", note: "引用已确认的分析版本；上游变更即 stale" },
+    { actor: "VSCode + Copilot Chat", artifact: "code_change（分支 / PR / TR 号）", human: "G3 评审 + 传输审批", gate: "G3", note: "完成物是代码，不是文档" },
+    { actor: "服务端 AI + VSCode 执行", artifact: "test_doc + 执行证据", human: "G4 业务验收", gate: "G4", note: "文档生成与真实测试执行分开" },
+    { actor: "服务端 AI + Hook", artifact: "knowledge_entry", human: "G5 发布确认", gate: "G5", note: "Confluence 等通过 008 Hook 接入" }
+  ];
+
+  const dispatchSteps = [
+    { act: "onlineA" },
+    { act: "claimA" },
+    { act: "offlineA" },
+    { act: "expire" },
+    { act: "onlineB" },
+    { act: "claimB" }
+  ];
+
+  let index = -1;
+  let playing = !reduceMotion;
+  let timer = null;
+  let sceneCleanup = null;
+  let progressAnim = null;
+  let duration = 0;
+  let remain = 0;
+  let startedAt = 0;
+
+  /* dots */
+  const dotEls = scenes.map((scene, i) => {
+    const b = document.createElement("button");
+    b.className = "dot";
+    b.type = "button";
+    b.title = `${String(i + 1).padStart(2, "0")} · ${scene.dataset.title || ""}`;
+    b.setAttribute("aria-label", `第 ${i + 1} 幕：${scene.dataset.title || ""}`);
+    b.addEventListener("click", () => go(i, true));
+    dots.appendChild(b);
+    return b;
+  });
+
+  function syncDots() {
+    dotEls.forEach((d, i) => d.classList.toggle("on", i === index));
+    nowEl.textContent = String(index + 1).padStart(2, "0");
+  }
+
+  function startProgress() {
+    if (progressAnim) progressAnim.cancel();
+    if (reduceMotion) {
+      bar.style.transform = "scaleX(1)";
+      return;
+    }
+    bar.style.transform = "scaleX(0)";
+    progressAnim = bar.animate(
+      [{ transform: "scaleX(0)" }, { transform: "scaleX(1)" }],
+      { duration, easing: "linear", fill: "forwards" }
+    );
+    if (!playing) progressAnim.pause();
+  }
+
+  function pauseProgress() {
+    if (progressAnim) progressAnim.pause();
+  }
+  function resumeProgress() {
+    if (progressAnim) progressAnim.play();
+  }
+
+  function schedule() {
+    clearTimeout(timer);
+    startedAt = performance.now();
+    timer = setTimeout(next, Math.max(remain, 120));
+  }
+
+  function next() {
+    go(index + 1 >= scenes.length ? 0 : index + 1);
+  }
+
+  function go(i, user) {
+    if (i < 0 || i >= scenes.length || i === index) return;
+    cancelCleanup();
+    if (index === -1) scenes.forEach((s) => s.classList.remove("active"));
+    scenes[index] && scenes[index].classList.remove("active");
+    index = i;
+    const scene = scenes[i];
+    scene.classList.add("active");
+    duration = Number(scene.dataset.duration || 9000);
+    remain = duration;
+    syncDots();
+    startProgress();
+    sceneCleanup = setupHook(scene);
+    clearTimeout(timer);
+    if (playing) schedule();
+    if (user) {
+      app.classList.remove("paused");
+    }
+  }
+
+  function setupHook(scene) {
+    const hook = scene.dataset.hook;
+    if (hook === "pipeline") return startPipeline(scene);
+    if (hook === "dispatch") return startDispatch(scene);
+    return null;
+  }
+
+  function cancelCleanup() {
+    if (typeof sceneCleanup === "function") sceneCleanup();
+    sceneCleanup = null;
+  }
+
+  /* ---------- pipeline ---------- */
+  function startPipeline(scene) {
+    const cards = [...scene.querySelectorAll(".stage-card")];
+    const detail = scene.querySelector("#stageDetail");
+    const actorEl = scene.querySelector("#detailActor");
+    const artifactEl = scene.querySelector("#detailArtifact");
+    const humanEl = scene.querySelector("#detailHuman");
+    const gateEl = scene.querySelector("#detailGate");
+    const noteEl = scene.querySelector("#detailNote");
+    let current = 0;
+    let tick = null;
+
+    function render(k) {
+      current = k;
+      cards.forEach((card, j) => {
+        card.classList.toggle("cur", j === k);
+        card.classList.toggle("done", j < k);
+      });
+      const d = stageData[k];
+      actorEl.textContent = d.actor;
+      artifactEl.textContent = d.artifact;
+      humanEl.textContent = d.human;
+      noteEl.textContent = d.note;
+      if (d.gate) {
+        gateEl.style.display = "inline-flex";
+        gateEl.textContent = `${d.gate} 门禁`;
+        gateEl.classList.remove("pop");
+        void gateEl.offsetWidth;
+        gateEl.classList.add("pop");
+      } else {
+        gateEl.style.display = "inline-flex";
+        gateEl.textContent = "自动 · 无门禁";
+        gateEl.classList.remove("pop");
+      }
+      detail.classList.remove("swap");
+      void detail.offsetWidth;
+      detail.classList.add("swap");
+    }
+
+    render(0);
+    cards.forEach((card) => {
+      card.addEventListener("click", () => {
+        pauseDemo();
+        render(Number(card.dataset.stage));
+      });
+    });
+    tick = setInterval(() => render((current + 1) % cards.length), 2100);
+    return () => {
+      clearInterval(tick);
+      cards.forEach((card) => {
+        card.classList.remove("cur", "done");
+        card.replaceWith(card.cloneNode(true));
+      });
+    };
+  }
+
+  /* ---------- dispatch ---------- */
+  function startDispatch(scene) {
+    const items = [...scene.querySelectorAll(".dispatch-event")];
+    const taskState = scene.querySelector("#taskState");
+    const chip = scene.querySelector("#taskT1");
+    const devA = scene.querySelector("#devA");
+    const devB = scene.querySelector("#devB");
+    let i = 0;
+    let tick = null;
+
+    function reset() {
+      items.forEach((el) => el.classList.remove("on"));
+      devA.className = "exec-card";
+      devB.className = "exec-card offline";
+      chip.className = "task-chip";
+      taskState.textContent = "待领取";
+      i = 0;
+    }
+
+    function apply(act) {
+      if (act === "onlineA") {
+        devA.classList.add("online");
+        devA.querySelector(".st").textContent = "z-sales · online";
+      } else if (act === "claimA") {
+        devA.classList.add("busy");
+        devA.querySelector(".st").textContent = "z-sales · lease 60s";
+        chip.classList.add("taken");
+        taskState.textContent = "A 处理中 · 租约 60s";
+      } else if (act === "offlineA") {
+        devA.classList.remove("busy");
+        devA.classList.add("offline");
+        devA.querySelector(".st").textContent = "z-sales · offline";
+        taskState.textContent = "A 处理中 · 心跳停止";
+      } else if (act === "expire") {
+        chip.classList.remove("taken");
+        taskState.textContent = "回池 · 最近持有人降权";
+      } else if (act === "onlineB") {
+        devB.classList.remove("offline");
+        devB.classList.add("online");
+        devB.querySelector(".st").textContent = "z-sales · online";
+      } else if (act === "claimB") {
+        devB.classList.add("busy");
+        devB.querySelector(".st").textContent = "z-sales · lease 60s";
+        chip.classList.add("taken");
+        taskState.textContent = "B 处理中 · 租约 60s";
+      }
+    }
+
+    function step() {
+      if (i >= items.length) return;
+      items[i].classList.add("on");
+      apply(dispatchSteps[i].act);
+      i += 1;
+    }
+
+    reset();
+    step();
+    tick = setInterval(step, 1550);
+    return () => {
+      clearInterval(tick);
+      items.forEach((el) => el.classList.remove("on"));
+      reset();
+    };
+  }
+
+  /* ---------- modes tabs ---------- */
+  document.querySelectorAll(".tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      pauseDemo();
+      const mode = tab.dataset.mode;
+      document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t === tab));
+      document.querySelectorAll("[data-mode-panel]").forEach((panel) => {
+        panel.classList.toggle("on", panel.dataset.modePanel === mode);
+      });
+    });
+  });
+
+  /* ---------- controls ---------- */
+  function pauseDemo() {
+    if (!playing) return;
+    playing = false;
+    clearTimeout(timer);
+    remain = Math.max(remain - (performance.now() - startedAt), 0);
+    pauseProgress();
+    btnPlay.textContent = "继续";
+    app.classList.add("paused");
+  }
+
+  function resumeDemo() {
+    if (playing) return;
+    playing = true;
+    btnPlay.textContent = "暂停";
+    app.classList.remove("paused");
+    resumeProgress();
+    schedule();
+  }
+
+  function togglePlay() {
+    if (playing) pauseDemo();
+    else resumeDemo();
+  }
+
+  btnPrev.addEventListener("click", () => { pauseDemo(); go(index - 1); });
+  btnReplay.addEventListener("click", () => { pauseDemo(); index = -1; go(0); });
+  btnNext.addEventListener("click", () => { pauseDemo(); go(index + 1); });
+  btnPlay.addEventListener("click", togglePlay);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight") { e.preventDefault(); pauseDemo(); go(index + 1); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); pauseDemo(); go(index - 1); }
+    else if (e.key === " " || e.key === "Spacebar") { e.preventDefault(); togglePlay(); }
+    else if (e.key === "Home") { e.preventDefault(); pauseDemo(); go(0); }
+    else if (e.key === "End") { e.preventDefault(); pauseDemo(); go(scenes.length - 1); }
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) pauseDemo();
+  });
+
+  /* deep link for screenshots: #s3 */
+  const deep = location.hash.match(/^#s(\d+)$/);
+  go(deep ? Math.min(Math.max(Number(deep[1]) - 1, 0), scenes.length - 1) : 0);
+  if (!playing) btnPlay.textContent = "继续";
+  if (deep) pauseDemo();
+})();
+</script>
+</body>
+</html>

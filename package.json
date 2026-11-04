@@ -11,6 +11,7 @@
   },
   "scripts": {
     "dev": "pnpm --filter @sap-superagent/cli run dev",
+    "cli": "tsx packages/cli/src/cli.ts",
     "check": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run contract:check",
     "typecheck": "pnpm -r --if-present run typecheck",
     "lint": "eslint packages scripts",

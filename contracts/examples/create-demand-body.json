@@ -1,0 +1,18 @@
+{
+  "title": "R-2041 取数逻辑",
+  "description": "按销售组织汇总开票金额，输出 ALV 列表",
+  "acceptanceCriteria": [
+    "金额与 MARA 一致",
+    "空结果返回 0"
+  ],
+  "priority": "normal",
+  "requester": {
+    "userId": "REQ001",
+    "orgUnit": "PDO"
+  },
+  "workspaceBinding": {
+    "repo": "z-sales",
+    "projectKey": "SALES",
+    "baseBranch": "main"
+  }
+}

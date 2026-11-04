@@ -64,6 +64,7 @@ stateDiagram-v2
 
 - 一个 Demand 的一个 Stage 只有一个 StageRun；重试/退回都在同一 StageRun 上增加 `attempt`，旧 attempt 的事件与工件保留。
 - 阶段完成必须产出声明的输出工件，且通过 **schema 校验 + 模板 checklist**（引用完整性、必填项覆盖、上游版本一致）；只过 schema 不算完成。
+- 每次 `server-ai` 执行都记一条 run ledger（模型、prompt 版本、输入工件版本、token、成本、耗时、失败原因），落在 `stage_attempts`，供成本统计与复现（实现补充）。
 - 上游工件产生新版本时，下游已生成工件标记 `stale` 并阻断继续推进，直到重新生成或人工确认。
 - 门禁由模板声明（`gate: none | human-approve`）。没有门禁的阶段全自动。
 
@@ -207,7 +208,7 @@ Assignment 状态：`active → completed | released | expired`。
 
 ### 4.4 WebSocket 事件流
 
-连接：`wss://<host>/api/v1/events?after=<lastSeq>`，token 同 REST。断线重连携带 `lastSeq` 补齐；事件日志保留 ≥7 天（M1 可配 24h），游标超出保留窗口时返回 `resync_required`，客户端全量拉取。WS 不可用时降级到 `GET /events/stream`（SSE，只读）。
+连接：`wss://<host>/api/v1/events?after=<lastSeq>`，token 同 REST。断线重连携带 `lastSeq` 补齐；事件日志保留 ≥7 天（M1 可配 24h），游标超出保留窗口时 REST 返回 `resync_required`，WS 收到控制帧 `{"type":"resync_required","lastSeq","earliestSeq"}`，客户端全量拉取。WS 不可用时降级到 `GET /events/stream`（SSE，只读）。
 
 统一 envelope：
 
@@ -253,7 +254,7 @@ Assignment 状态：`active → completed | released | expired`。
 
 ## 5. 工件与上下文
 
-- **存储可插拔**：本地文件（M1）、S3/对象存储（M2）、SAP 附件/内容仓库（M3）。控制平面只存元数据、checksum 与引用。
+- **存储可插拔**：本地文件（M1）、S3/对象存储（M2）、SAP 附件/内容仓库（M3）。控制平面只存元数据、checksum 与引用。M1 实现补充：本地模式把内容写到 `SA_STATE_DIR/artifacts/<artifactId>/v<n>.bin`，接口只接受 `contentBase64`（`contentUrl` 预留给 M2 对象存储）；checksum 必须等于解码后字节的 sha256。
 - **上下文包**是工件的只读快照，不是新概念：由需求摘要、输入工件、验收标准、工作区绑定和禁止项组成，扩展负责写入 `.sap-superagent/context/<taskId>.md`，供 Copilot Chat 引用。
 - **审计**：工件每次创建/审批写事件；事件只追加，不更新。
 

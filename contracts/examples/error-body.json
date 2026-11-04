@@ -1,0 +1,10 @@
+{
+  "error": {
+    "code": "lease_expired",
+    "message": "lease expired; re-read the task before writing",
+    "retryable": true,
+    "details": {
+      "taskId": "01J8ZQ9W3K5M2V7X4C6B8N0P1R"
+    }
+  }
+}

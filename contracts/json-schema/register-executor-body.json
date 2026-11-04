@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "vscode",
+        "server-ai"
+      ]
+    },
+    "user": {
+      "type": "string",
+      "minLength": 1
+    },
+    "machineIdHash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capabilities": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "roles": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "requester",
+          "consultant",
+          "developer",
+          "ops"
+        ]
+      }
+    },
+    "workspaces": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "workspaceKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "repo": {
+            "type": "string",
+            "minLength": 1
+          },
+          "projectKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "baseBranch": {
+            "type": "string",
+            "minLength": 1
+          },
+          "localPathHint": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "workspaceKey"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "protocolVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cliVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "maxConcurrent": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 16
+    }
+  },
+  "required": [
+    "kind",
+    "user",
+    "capabilities",
+    "roles",
+    "workspaces",
+    "protocolVersion"
+  ],
+  "additionalProperties": false
+}

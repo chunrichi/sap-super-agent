@@ -83,6 +83,7 @@ export const unregisterExecutorResponseSchema = z
     serverTime: isoDateTimeSchema,
   })
   .strict();
+export type UnregisterExecutorResponse = z.infer<typeof unregisterExecutorResponseSchema>;
 
 // ===========================================================================
 // Tasks (docs/003 §4.2)
@@ -119,6 +120,7 @@ export const taskDetailResponseSchema = z
     serverTime: isoDateTimeSchema,
   })
   .strict();
+export type TaskDetailResponse = z.infer<typeof taskDetailResponseSchema>;
 
 export const taskContextArtifactSchema = z
   .object({
@@ -167,6 +169,7 @@ export const taskContextResponseSchema = z
     json: taskContextSchema,
   })
   .strict();
+export type TaskContextResponse = z.infer<typeof taskContextResponseSchema>;
 
 export const claimTaskBodySchema = z.object({}).strict().optional();
 export type ClaimTaskBody = z.infer<typeof claimTaskBodySchema>;
@@ -229,6 +232,7 @@ export const submitArtifactResponseSchema = z
     serverTime: isoDateTimeSchema,
   })
   .strict();
+export type SubmitArtifactResponse = z.infer<typeof submitArtifactResponseSchema>;
 
 export const completeTaskBodySchema = z
   .object({
@@ -256,10 +260,12 @@ export type FailTaskBody = z.infer<typeof failTaskBodySchema>;
 export const failTaskResponseSchema = z
   .object({ task: taskSchema, serverTime: isoDateTimeSchema })
   .strict();
+export type FailTaskResponse = z.infer<typeof failTaskResponseSchema>;
 
 export const releaseTaskResponseSchema = z
   .object({ task: taskSchema, serverTime: isoDateTimeSchema })
   .strict();
+export type ReleaseTaskResponse = z.infer<typeof releaseTaskResponseSchema>;
 
 // ===========================================================================
 // Demands + approvals (docs/003 §4.3)
@@ -314,6 +320,7 @@ export const listDemandsResponseSchema = z
     serverTime: isoDateTimeSchema,
   })
   .strict();
+export type ListDemandsResponse = z.infer<typeof listDemandsResponseSchema>;
 
 export const cancelDemandBodySchema = z
   .object({ reason: z.string().min(1).max(1_000).optional() })
@@ -323,6 +330,7 @@ export const cancelDemandBodySchema = z
 export const cancelDemandResponseSchema = z
   .object({ demand: demandSchema, serverTime: isoDateTimeSchema })
   .strict();
+export type CancelDemandResponse = z.infer<typeof cancelDemandResponseSchema>;
 
 export const listApprovalsQuerySchema = z
   .object({
@@ -334,6 +342,7 @@ export const listApprovalsQuerySchema = z
 export const listApprovalsResponseSchema = z
   .object({ approvals: z.array(approvalSchema), serverTime: isoDateTimeSchema })
   .strict();
+export type ListApprovalsResponse = z.infer<typeof listApprovalsResponseSchema>;
 
 export const approvalDecisionBodySchema = z
   .object({
@@ -347,6 +356,7 @@ export type ApprovalDecisionBody = z.infer<typeof approvalDecisionBodySchema>;
 export const approvalDecisionResponseSchema = z
   .object({ approval: approvalSchema, serverTime: isoDateTimeSchema })
   .strict();
+export type ApprovalDecisionResponse = z.infer<typeof approvalDecisionResponseSchema>;
 
 
 // ===========================================================================
@@ -370,6 +380,7 @@ export type AdminCreateTaskBody = z.infer<typeof adminCreateTaskBodySchema>;
 export const adminCreateTaskResponseSchema = z
   .object({ task: taskSchema, serverTime: isoDateTimeSchema })
   .strict();
+export type AdminCreateTaskResponse = z.infer<typeof adminCreateTaskResponseSchema>;
 
 // ===========================================================================
 // Ops

@@ -11,7 +11,15 @@
   },
   "categories": ["Other"],
   "main": "./dist/extension.js",
-  "activationEvents": [],
+  "activationEvents": [
+    "onView:sapSuperAgent.inbox",
+    "onCommand:sapSuperAgent.connect",
+    "onCommand:sapSuperAgent.bindWorkspace",
+    "onCommand:sapSuperAgent.claimTask",
+    "onCommand:sapSuperAgent.openTask",
+    "onCommand:sapSuperAgent.submitArtifact",
+    "onCommand:sapSuperAgent.toggleAccepting"
+  ],
   "contributes": {
     "commands": [
       { "command": "sapSuperAgent.connect", "title": "SAP Super Agent: 连接控制平面" },

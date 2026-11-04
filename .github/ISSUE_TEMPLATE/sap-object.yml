@@ -1,0 +1,19 @@
+name: SAP change
+description: SAP 侧对象或接口变更（先读 handoffs/H2-sap-icf-mime.md）
+labels: ["area:sap", "type:feature"]
+body:
+  - type: input
+    id: system
+    attributes: { label: SAP 系统, description: SID/client，仅测试系统 }
+    validations: { required: true }
+  - type: textarea
+    id: objects
+    attributes: { label: 对象与变更 }
+    validations: { required: true }
+  - type: input
+    id: transport
+    attributes: { label: 传输请求 }
+  - type: textarea
+    id: verification
+    attributes: { label: 验证, description: abap check / ABAP Unit / curl 结果 }
+    validations: { required: true }

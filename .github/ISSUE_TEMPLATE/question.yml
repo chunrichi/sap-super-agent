@@ -1,0 +1,8 @@
+name: Question
+description: 设计或使用问题
+labels: ["type:question"]
+body:
+  - type: textarea
+    id: question
+    attributes: { label: 问题 }
+    validations: { required: true }

@@ -1,0 +1,18 @@
+SAP Super Agent
+Copyright 2026 SAP Super Agent contributors
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes material from third parties:
+
+1. `.agents/skills/abap-cli`, `.agents/skills/abap-cli-setup`,
+   `.agents/skills/abap-cli-search`, `.agents/skills/abap-cli-edit`,
+   `.agents/skills/abap-cli-data`, `.agents/skills/abap-cli-performance`
+   are derived from abap-cli (https://github.com/chunrichi/abap-cli),
+   licensed under the MIT License.
+   Copyright (c) abap-cli contributors.
+
+2. The design work references, without copying source code,
+   dsh-superagent (https://github.com/deepseek-ai/dsh-superagent-prototype),
+   licensed under the MIT License.
+   Copyright (c) DeepSeek Harness Team.

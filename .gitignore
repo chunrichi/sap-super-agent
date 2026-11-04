@@ -1,0 +1,39 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+out/
+*.tsbuildinfo
+
+# tests / coverage
+coverage/
+.vscode-test/
+
+# packaging
+*.vsix
+
+# local ABAP workspace state (may contain system/client/credentials)
+.abap.json
+.abap-cli/
+
+# env and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# logs and OS noise
+*.log
+.DS_Store
+Thumbs.db
+
+# local scratch
+tmp/
+
+# sap-superagent client state (keep the committed workspace binding)
+.sap-superagent/*
+!.sap-superagent/workspace.json
+.sap-superagent-worktrees/

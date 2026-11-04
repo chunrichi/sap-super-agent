@@ -1,0 +1,22 @@
+{
+  "name": "sap-superagent",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Super-agent for SAP delivery: demands in SAP, orchestration in a portable control plane, coding in VSCode with Copilot Chat.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "packageManager": "pnpm@10.17.1",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "check": "pnpm -r --if-present run check",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "test": "pnpm -r --if-present run test",
+    "build": "pnpm -r --if-present run build",
+    "e2e": "node scripts/e2e.mjs",
+    "contract:gen": "node scripts/contract-gen.mjs",
+    "eval:golden": "node scripts/eval-golden.mjs",
+    "sap:check": "node scripts/sap-check.mjs"
+  }
+}

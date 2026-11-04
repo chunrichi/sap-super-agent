@@ -138,3 +138,38 @@ describe('port + state-dir checks', () => {
     expect(result.detail).toContain('可写');
   });
 });
+
+describe('.env configuration (H0 §1.4)', () => {
+  it('doctor reflects BYOK settings from <cwd>/.env', async () => {
+    const cwd = await makeTempDir();
+    await writeFile(
+      path.join(cwd, '.env'),
+      [
+        'SA_AI_PROVIDER=openai-compatible',
+        'SA_AI_BASE_URL=https://ai.example.invalid/v1',
+        'SA_AI_API_KEY=dummy-key',
+        'SA_AI_MODEL=test-model',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const report = await diagnose({ cwd, env: {}, io: new BufferIo(), ...fastChecks });
+    const ai = report.checks.find((check) => check.id === 'ai');
+    expect(ai?.ok).toBe(true);
+    expect(ai?.detail).toContain('openai-compatible');
+  });
+
+  it('lets real environment variables override .env', async () => {
+    const cwd = await makeTempDir();
+    await writeFile(path.join(cwd, '.env'), 'SA_AI_PROVIDER=openai-compatible\n', 'utf8');
+
+    const report = await diagnose({
+      cwd,
+      env: { SA_AI_PROVIDER: 'fake' },
+      io: new BufferIo(),
+      ...fastChecks,
+    });
+    const ai = report.checks.find((check) => check.id === 'ai');
+    expect(ai?.detail).toContain('fake');
+  });
+});

@@ -2,6 +2,7 @@
 // Checks are deliberately dependency-free and offline: they must work before
 // `pnpm install`, on a fresh machine.
 import { execFileSync } from 'node:child_process';
+import { resolveEnv } from '@sap-superagent/server';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
@@ -103,7 +104,9 @@ export async function isStateDirWritable(
 }
 
 export async function diagnose(options: DoctorOptions): Promise<DoctorReport> {
-  const { cwd, env } = options;
+  const { cwd } = options;
+  // Show the effective configuration: `<cwd>/.env` merged under real env vars.
+  const env = resolveEnv(cwd, options.env);
   const checks: DoctorCheck[] = [];
 
   const version = options.nodeVersion ?? process.version;

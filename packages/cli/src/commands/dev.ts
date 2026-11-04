@@ -1,6 +1,12 @@
 // `sap-superagent dev` — boot the M1 local control plane and print everything a
 // developer needs for the manual smoke test (H0 §1.6, §2).
-import { DEFAULT_TOKEN_TTL_MS, issueToken, loadOrCreateStateSecret, startServer } from '@sap-superagent/server';
+import {
+  DEFAULT_TOKEN_TTL_MS,
+  issueToken,
+  loadOrCreateStateSecret,
+  resolveEnv,
+  startServer,
+} from '@sap-superagent/server';
 import type { RunningServer, ServerOptions } from '@sap-superagent/server';
 import { CliError } from '../lib/errors.js';
 import type { CliIo } from '../lib/io.js';
@@ -51,15 +57,18 @@ function resolveTemplatesDir(options: DevOptions): string {
  * install signal handlers: `runDev` owns those, and e2e can call this directly.
  */
 export async function startDevServer(options: DevOptions): Promise<DevHandle> {
-  const stateDir = resolveStateDir(options.cwd, options.env, options.stateDir);
-  const port = resolvePort(options.env, options.port);
+  // `.env` in the working directory is documented M1 configuration (H0 §1.4):
+  // real environment variables still win over file values.
+  const env = resolveEnv(options.cwd, options.env);
+  const stateDir = resolveStateDir(options.cwd, env, options.stateDir);
+  const port = resolvePort(env, options.port);
   const host = options.host?.trim() === undefined || options.host.trim() === '' ? DEFAULT_HOST : options.host.trim();
   const templatesDir = resolveTemplatesDir(options);
   const startServerFn = options.startServerFn ?? startServer;
 
   let server: RunningServer;
   try {
-    server = await startServerFn({ stateDir, host, port, templatesDir });
+    server = await startServerFn({ stateDir, host, port, templatesDir, env });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw new CliError(

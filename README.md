@@ -66,13 +66,52 @@ flowchart LR
 
 ## 快速开始
 
-尚未发布可运行版本；实现从 [HANDOFF.md](HANDOFF.md) 开始（S0 骨架 → S1 门禁/模板 → S2 SAP）。路线图 v0.1.0 将提供：
+前置：Node `^22.19.0 || >=24.0.0`（推荐 24）、pnpm 10（`corepack enable`）。
 
 ```sh
-npx sap-superagent dev          # M1 本地模式：控制平面 + 面板 + 内置 AI 执行器
+corepack enable
+pnpm install
+cp .env.example .env     # 可选；不配也能跑，默认 fake AI provider
+pnpm dev                 # 启动 M1 控制平面（默认 http://127.0.0.1:3080）
 ```
 
-VSCode 扩展将提供「连接控制平面 → 绑定工作区 → 领取任务 → 在 Copilot Chat 中处理」的最小闭环。
+`pnpm dev` 打印 control plane URL 与本地 dev token（user/admin）。另开终端建需求：
+
+```sh
+TOKEN=<user token>
+curl -s -X POST http://127.0.0.1:3080/api/v1/demands \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"title":"R-2041 取数逻辑","description":"按销售组织汇总开票金额","acceptanceCriteria":["金额与 MARA 一致"],"requester":{"userId":"REQ001"}}'
+```
+
+fake provider 下数秒内 `GET /api/v1/demands/{id}` 会包含 `requirement_analysis` 工件；S0 用 `POST /api/v1/admin/tasks` 手建开发任务（S1 起由模板自动产生）。
+
+VSCode 扩展（任务客户端 + 本地能力宿主，不接管 Copilot 会话）：
+
+1. VSCode 打开本仓库，`pnpm --filter sap-superagent-vscode run build` 后按 F5（或安装 VSIX）；
+2. 命令面板 → `SAP Super Agent: 连接控制平面`，粘贴 `pnpm dev` 打印的 user token（存 `SecretStorage`）；
+3. `绑定当前工作区` → 任务箱「可领取」领取任务 → `打开任务` 生成 `.sap-superagent/task/<taskId>/context.md`，供 Copilot Chat 用 `#file` 引用。
+
+其他命令：
+
+```sh
+pnpm cli init --repo z-sales --project-key SALES   # 写 .sap-superagent/workspace.json
+pnpm cli token --kind user                         # 单独签发 token
+pnpm cli doctor                                    # 环境自检：Node/pnpm/端口/状态目录/模板/AI
+```
+
+端口被占用时用 `pnpm cli dev --port <port>`（例如 3080 已被别的应用占用）。
+
+开发与验收门禁：
+
+```sh
+pnpm check        # typecheck + eslint + 单测/集成测试 + contracts 快照
+pnpm e2e          # M1 纵向闭环 + docs/009 失败场景 #1/#2/#3/#10
+pnpm build        # 所有包按依赖拓扑序构建（产物在 .gitignore 内）
+pnpm contract:gen # 从 protocol 重新生成 contracts/json-schema 与 examples
+```
+
+服务端 AI 走 BYOK（OpenAI 兼容 / DeepSeek / Azure，Key 只在服务端）；无 Key 时默认 `fake` provider，e2e 与离线开发不依赖网络。配置项见 [.env.example](.env.example) 与 [docs/005](docs/005-clients-and-ai.md)。
 
 ## 参与
 

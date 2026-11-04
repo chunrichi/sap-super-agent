@@ -130,13 +130,35 @@ export function evaluateClaimEligibility(input: ClaimEligibilityInput): ClaimEli
   return { eligible: reasons.length === 0, reasons };
 }
 
-/** Priority desc, dueAt asc (no due date last), createdAt asc (docs/003 §3). */
-export function rankTasks<T extends Pick<Task, 'priority' | 'dueAt' | 'createdAt'>>(
+/**
+ * How much a task recently released by the viewer is down-weighted: one
+ * priority tier, so a "just let it go" task is demoted but never excluded
+ * (docs/003 §2.3 "排序加权重，不硬排除").
+ */
+export const LAST_HOLDER_PENALTY = 1;
+
+export interface RankTasksOptions {
+  /** Viewer whose recent releases should be ranked down (executor user id). */
+  forUserId?: string | null;
+}
+
+/**
+ * Priority desc, dueAt asc (no due date last), createdAt asc, with a soft
+ * penalty for tasks the viewer released/expired most recently (docs/003 §3).
+ */
+export function rankTasks<T extends Pick<Task, 'priority' | 'dueAt' | 'createdAt' | 'lastHolderUserIds'>>(
   tasks: readonly T[],
+  options: RankTasksOptions = {},
 ): T[] {
   const priorityWeight: Record<Priority, number> = { high: 0, normal: 1, low: 2 };
+  const viewer = options.forUserId ?? null;
+  const weightOf = (task: T): number => {
+    const recentlyHeld =
+      viewer !== null && task.lastHolderUserIds.includes(viewer) ? LAST_HOLDER_PENALTY : 0;
+    return priorityWeight[task.priority] + recentlyHeld;
+  };
   return [...tasks].sort((left, right) => {
-    const byPriority = priorityWeight[left.priority] - priorityWeight[right.priority];
+    const byPriority = weightOf(left) - weightOf(right);
     if (byPriority !== 0) return byPriority;
     const leftDue = left.dueAt === null ? Number.POSITIVE_INFINITY : Date.parse(left.dueAt);
     const rightDue = right.dueAt === null ? Number.POSITIVE_INFINITY : Date.parse(right.dueAt);

@@ -20,6 +20,22 @@ import {
 
 const NOW_MS = Date.parse(NOW);
 
+function rankable(
+  id: string,
+  priority: 'high' | 'normal' | 'low',
+  dueAt: string | null,
+  createdAt: string,
+  lastHolderUserIds: string[] = [],
+): {
+  id: string;
+  priority: 'high' | 'normal' | 'low';
+  dueAt: string | null;
+  createdAt: string;
+  lastHolderUserIds: string[];
+} {
+  return { id, priority, dueAt, createdAt, lastHolderUserIds };
+}
+
 function eligibility(overrides: Partial<ClaimEligibilityInput> = {}): ClaimEligibilityInput {
   return {
     task: boundTask,
@@ -150,18 +166,31 @@ describe('offer + ranking', () => {
   });
 
   it('ranks priority desc, dueAt asc, createdAt asc', () => {
-    const make = (id: string, priority: 'high' | 'normal' | 'low', dueAt: string | null, createdAt: string) => ({
-      id,
-      priority,
-      dueAt,
-      createdAt,
-    });
     const tasks = [
-      make('a', 'normal', '2026-11-06T00:00:00.000Z', '2026-11-05T00:00:00.000Z'),
-      make('b', 'high', null, '2026-11-05T02:00:00.000Z'),
-      make('c', 'normal', '2026-11-05T12:00:00.000Z', '2026-11-05T01:00:00.000Z'),
-      make('d', 'high', null, '2026-11-05T01:00:00.000Z'),
+      rankable('a', 'normal', '2026-11-06T00:00:00.000Z', '2026-11-05T00:00:00.000Z'),
+      rankable('b', 'high', null, '2026-11-05T02:00:00.000Z'),
+      rankable('c', 'normal', '2026-11-05T12:00:00.000Z', '2026-11-05T01:00:00.000Z'),
+      rankable('d', 'high', null, '2026-11-05T01:00:00.000Z'),
     ];
     expect(rankTasks(tasks).map((task) => task.id)).toEqual(['d', 'b', 'c', 'a']);
+  });
+
+  it('down-weights tasks the viewer recently released instead of excluding them', () => {
+    const tasks = [
+      rankable('fresh', 'normal', null, '2026-11-05T00:00:00.000Z', []),
+      rankable('released', 'normal', null, '2026-11-05T00:00:00.000Z', ['DEV001', 'DEV002']),
+    ];
+    // Same priority/due/date: the recent holder sees its released task second...
+    expect(rankTasks(tasks, { forUserId: 'DEV001' }).map((task) => task.id)).toEqual([
+      'fresh',
+      'released',
+    ]);
+    // ...but the task is still offered (soft penalty) and other users are unaffected.
+    expect(rankTasks(tasks, { forUserId: 'DEV002' })[0]?.id).toBe('fresh');
+    expect(rankTasks(tasks, { forUserId: 'DEV999' }).map((task) => task.id)).toEqual([
+      'fresh',
+      'released',
+    ]);
+    expect(rankTasks(tasks, { forUserId: 'DEV001' })).toHaveLength(2);
   });
 });

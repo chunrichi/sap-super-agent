@@ -75,7 +75,7 @@ cp .env.example .env     # 可选；不配也能跑，默认 fake AI provider
 pnpm dev                 # 启动 M1 控制平面（默认 http://127.0.0.1:3080）
 ```
 
-`pnpm dev` 打印 control plane URL 与本地 dev token（user/admin）。另开终端建需求：
+`pnpm dev` 打印 control plane URL 与本地 dev token（user/admin）。控制平面启动时读取工作目录 `.env`（`SA_AI_*` / `SA_STATE_DIR` / `SA_HTTP_PORT`，真实环境变量优先）；同一状态目录只允许一个实例，重复启动会直接提示已占用。另开终端建需求：
 
 ```sh
 TOKEN=<user token>

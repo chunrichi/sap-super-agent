@@ -6,7 +6,6 @@ import {
   DEMAND_TRANSITIONS,
   InvalidTransitionError,
   STAGE_RUN_TRANSITIONS,
-  TASK_TRANSITIONS,
   assertDemandTransition,
   assertTaskTransition,
   canReturnTaskToPool,

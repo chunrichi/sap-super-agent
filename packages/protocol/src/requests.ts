@@ -10,6 +10,7 @@ import {
 } from './enums.js';
 import {
   approvalSchema,
+  artifactChainSchema,
   artifactSchema,
   artifactVersionSchema,
   checksumSchema,
@@ -19,6 +20,7 @@ import {
   executorWorkspaceSchema,
   isoDateTimeSchema,
   leaseSchema,
+  notificationSchema,
   stageRunSchema,
   taskSchema,
   taskSummarySchema,
@@ -26,6 +28,7 @@ import {
 } from './entities.js';
 import { eventEnvelopeSchema } from './events.js';
 import { demandIdSchema, ulidSchema } from './ids.js';
+import { stageTemplateFileSchema } from './templates.js';
 
 // ===========================================================================
 // Executors (docs/003 §4.2)
@@ -299,6 +302,8 @@ export const demandDetailResponseSchema = z
     stages: z.array(stageRunSchema),
     artifacts: z.array(artifactSchema),
     artifactVersions: z.array(artifactVersionSchema),
+    /** Same artifacts/versions grouped by stage (docs/003 §2.4). */
+    artifactChains: z.array(artifactChainSchema),
     approvals: z.array(approvalSchema),
     events: z.array(eventEnvelopeSchema),
     serverTime: isoDateTimeSchema,
@@ -358,9 +363,89 @@ export const approvalDecisionResponseSchema = z
   .strict();
 export type ApprovalDecisionResponse = z.infer<typeof approvalDecisionResponseSchema>;
 
+/** `POST /approvals/{id}/withdraw` (docs/003 §2.5: 发起人撤回). */
+export const withdrawApprovalResponseSchema = z
+  .object({ approval: approvalSchema, serverTime: isoDateTimeSchema })
+  .strict();
+export type WithdrawApprovalResponse = z.infer<typeof withdrawApprovalResponseSchema>;
 
 // ===========================================================================
-// Admin (S0 verification only; H1 replaces task creation with templates)
+// Stage templates (docs/003 §2.7) — read-only in M1
+// ===========================================================================
+
+export const listTemplatesResponseSchema = z
+  .object({
+    templates: z.array(stageTemplateFileSchema),
+    defaultTemplateId: z.string().min(1),
+    serverTime: isoDateTimeSchema,
+  })
+  .strict();
+export type ListTemplatesResponse = z.infer<typeof listTemplatesResponseSchema>;
+
+// ===========================================================================
+// Notifications (docs/003 §2.5, docs/005 §2.2)
+// ===========================================================================
+
+export const listNotificationsQuerySchema = z
+  .object({
+    state: z.enum(['unread', 'all']).default('unread'),
+    limit: z.coerce.number().int().positive().max(100).default(50),
+  })
+  .strict();
+export type ListNotificationsQuery = z.infer<typeof listNotificationsQuerySchema>;
+
+export const listNotificationsResponseSchema = z
+  .object({
+    notifications: z.array(notificationSchema),
+    serverTime: isoDateTimeSchema,
+  })
+  .strict();
+export type ListNotificationsResponse = z.infer<typeof listNotificationsResponseSchema>;
+
+export const markNotificationReadResponseSchema = z
+  .object({ notification: notificationSchema, serverTime: isoDateTimeSchema })
+  .strict();
+export type MarkNotificationReadResponse = z.infer<typeof markNotificationReadResponseSchema>;
+
+// ===========================================================================
+// Human artifact revisions (docs/003 §2.4: 确认/调整产生新版本，不覆盖)
+// ===========================================================================
+
+export const createDemandArtifactBodySchema = z
+  .object({
+    kind: artifactKindSchema,
+    contentType: z.string().min(1),
+    contentBase64: z.string().min(1).optional(),
+    contentUrl: z.string().url().optional(),
+    checksum: checksumSchema,
+    summary: z.string().min(1).max(2_000).optional(),
+    title: z.string().min(1).max(200).optional(),
+  })
+  .strict()
+  .superRefine((body, ctx) => {
+    const sources = [body.contentBase64, body.contentUrl].filter((value) => value !== undefined);
+    if (sources.length !== 1) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'exactly one of contentBase64 or contentUrl is required',
+        path: ['contentBase64'],
+      });
+    }
+  });
+export type CreateDemandArtifactBody = z.infer<typeof createDemandArtifactBodySchema>;
+
+export const createDemandArtifactResponseSchema = z
+  .object({
+    artifact: artifactSchema,
+    version: artifactVersionSchema,
+    serverTime: isoDateTimeSchema,
+  })
+  .strict();
+export type CreateDemandArtifactResponse = z.infer<typeof createDemandArtifactResponseSchema>;
+
+
+// ===========================================================================
+// Admin (S0 verification / M1 operations)
 // ===========================================================================
 
 export const adminCreateTaskBodySchema = z
@@ -381,6 +466,12 @@ export const adminCreateTaskResponseSchema = z
   .object({ task: taskSchema, serverTime: isoDateTimeSchema })
   .strict();
 export type AdminCreateTaskResponse = z.infer<typeof adminCreateTaskResponseSchema>;
+
+/** `POST /admin/approvals/{id}/expire`: M1 ops escalation for a stuck gate. */
+export const adminExpireApprovalResponseSchema = z
+  .object({ approval: approvalSchema, serverTime: isoDateTimeSchema })
+  .strict();
+export type AdminExpireApprovalResponse = z.infer<typeof adminExpireApprovalResponseSchema>;
 
 // ===========================================================================
 // Ops

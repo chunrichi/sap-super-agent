@@ -1,15 +1,24 @@
 import { z } from 'zod';
-import { artifactKindSchema, executorKindSchema, roleSchema } from './enums.js';
+import {
+  artifactKindSchema,
+  autonomyModeSchema,
+  checklistAssertionSchema,
+  executorKindSchema,
+  roleSchema,
+} from './enums.js';
 
 // ---------------------------------------------------------------------------
 // Stage templates (docs/003 §2.7)
 //
 // Templates are configuration, not code branches: a `templateId@version` pair is
 // fixed on a Demand at creation time, so later template edits only affect new
-// demands. See H1 for the full 3-stage / 6-stage presets.
+// demands. See docs/003 §2.7 for the full 3-stage / 6-stage presets.
 // ---------------------------------------------------------------------------
 
 export const STAGE_KEY_PATTERN = /^[a-z][a-z0-9_]*$/;
+
+/** Default gate timeout from docs/007 §0 (超时 3 天升级提醒). */
+export const DEFAULT_GATE_TIMEOUT_DAYS = 3;
 
 export const gateRefSchema = z.union([
   z.literal('none'),
@@ -31,8 +40,16 @@ export const stageTemplateSchema = z
     outputArtifactKind: artifactKindSchema,
     gate: gateRefSchema,
     maxAttempts: z.number().int().min(1).max(10),
-    /** Declarative, decidable assertions evaluated on stage completion (H1). */
-    checklist: z.array(z.string().min(1)),
+    /**
+     * `observe` (default for new server-AI stages, docs/005 §3.2) keeps the
+     * generated artifact as a draft and parks the stage at `waiting_human`;
+     * `auto` advances according to the gate rules. See docs/003 §2.7.
+     */
+    autonomy: autonomyModeSchema.default('auto'),
+    /** Roles allowed to claim the stage's task (vscode stages only). */
+    requiredRoles: z.array(roleSchema).default([]),
+    /** Declarative, decidable assertions evaluated on stage completion (docs/003 §2.2). */
+    checklist: z.array(checklistAssertionSchema),
   })
   .strict();
 export type StageTemplate = z.infer<typeof stageTemplateSchema>;
@@ -67,15 +84,23 @@ export const stageTemplateFileSchema = z
       stageKeys.add(stage.key);
 
       const gateRef = stage.gate;
-      if (
-        gateRef !== 'none' &&
-        !template.gates.some((gate) => gate.gateKey === gateRef.gateKey)
-      ) {
-        ctx.addIssue({
-          code: 'custom',
-          message: `stage "${stage.key}" references unknown gate: ${gateRef.gateKey}`,
-          path: ['stages', index, 'gate'],
-        });
+      if (gateRef !== 'none') {
+        const gate = template.gates.find((candidate) => candidate.gateKey === gateRef.gateKey);
+        if (gate === undefined) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `stage "${stage.key}" references unknown gate: ${gateRef.gateKey}`,
+            path: ['stages', index, 'gate'],
+          });
+        } else if (gate.role !== gateRef.role) {
+          // Two sources of truth for the approver role would be ambiguous; keep
+          // the gate definition authoritative and reject drifting stage refs.
+          ctx.addIssue({
+            code: 'custom',
+            message: `stage "${stage.key}" gate ${gateRef.gateKey} role "${gateRef.role}" does not match gate definition role "${gate.role}"`,
+            path: ['stages', index, 'gate', 'role'],
+          });
+        }
       }
     }
 
@@ -89,6 +114,18 @@ export const stageTemplateFileSchema = z
         });
       }
       gateKeys.add(gate.gateKey);
+    }
+
+    const outputRefs = new Set<string>();
+    for (const [index, stage] of template.stages.entries()) {
+      if (outputRefs.has(stage.outputArtifactKind)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `duplicate output artifact kind: ${stage.outputArtifactKind}`,
+          path: ['stages', index, 'outputArtifactKind'],
+        });
+      }
+      outputRefs.add(stage.outputArtifactKind);
     }
   });
 export type StageTemplateFile = z.infer<typeof stageTemplateFileSchema>;

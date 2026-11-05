@@ -220,3 +220,39 @@ export function latestArtifactRefsByKind(
   }
   return refs;
 }
+
+/**
+ * Version chains grouped by stage for `GET /demands/{id}` (docs/003 §2.4).
+ * Artifacts are immutable, so every historical version stays in its chain; the
+ * `stale` marker lives on the version row.
+ */
+export function artifactChainsForDemand(
+  db: DatabaseSync,
+  demandId: string,
+): Array<{ stageKey: string | null; artifacts: Artifact[]; versions: ArtifactVersion[] }> {
+  const artifacts = listArtifactsForDemand(db, demandId);
+  const versions = listArtifactVersionsForDemand(db, demandId);
+  const versionsByArtifact = new Map<string, ArtifactVersion[]>();
+  for (const version of versions) {
+    const list = versionsByArtifact.get(version.artifactId);
+    if (list === undefined) versionsByArtifact.set(version.artifactId, [version]);
+    else list.push(version);
+  }
+  const chains: Array<{
+    stageKey: string | null;
+    artifacts: Artifact[];
+    versions: ArtifactVersion[];
+  }> = [];
+  const byStage = new Map<string | null, (typeof chains)[number]>();
+  for (const artifact of artifacts) {
+    let chain = byStage.get(artifact.stageKey);
+    if (chain === undefined) {
+      chain = { stageKey: artifact.stageKey, artifacts: [], versions: [] };
+      byStage.set(artifact.stageKey, chain);
+      chains.push(chain);
+    }
+    chain.artifacts.push(artifact);
+    chain.versions.push(...(versionsByArtifact.get(artifact.id) ?? []));
+  }
+  return chains;
+}

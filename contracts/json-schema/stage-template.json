@@ -78,11 +78,37 @@
       "minimum": 1,
       "maximum": 10
     },
+    "autonomy": {
+      "default": "auto",
+      "type": "string",
+      "enum": [
+        "auto",
+        "observe"
+      ]
+    },
+    "requiredRoles": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "requester",
+          "consultant",
+          "developer",
+          "ops"
+        ]
+      }
+    },
     "checklist": {
       "type": "array",
       "items": {
         "type": "string",
-        "minLength": 1
+        "enum": [
+          "sections_present",
+          "inputs_referenced",
+          "not_stale",
+          "acceptance_covered"
+        ]
       }
     }
   },
@@ -94,6 +120,8 @@
     "outputArtifactKind",
     "gate",
     "maxAttempts",
+    "autonomy",
+    "requiredRoles",
     "checklist"
   ],
   "additionalProperties": false

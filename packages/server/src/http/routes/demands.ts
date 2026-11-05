@@ -30,7 +30,11 @@ import { insertStageRun, listStageRunsForDemand, updateStageRun } from '../../db
 import { listTasksForDemand, updateTask } from '../../db/tasks.js';
 import { writeTransaction } from '../../db/transaction.js';
 import { badRequest, invalidState, notFound } from '../../errors.js';
-import { listArtifactVersionsForDemand, listArtifactsForDemand } from '../../db/artifacts.js';
+import {
+  artifactChainsForDemand,
+  listArtifactVersionsForDemand,
+  listArtifactsForDemand,
+} from '../../db/artifacts.js';
 import { requireUserOrAdmin } from '../auth.js';
 import { nowIso, paramId, publish } from '../route-utils.js';
 import { parseInput, sendValidated } from '../validate.js';
@@ -152,6 +156,7 @@ export function registerDemandRoutes(app: FastifyInstance, ctx: ServerContext): 
         stages: listStageRunsForDemand(ctx.db, demandId),
         artifacts: listArtifactsForDemand(ctx.db, demandId),
         artifactVersions: listArtifactVersionsForDemand(ctx.db, demandId),
+        artifactChains: artifactChainsForDemand(ctx.db, demandId),
         approvals: [],
         events: eventsForDemand(ctx.db, demandId),
         serverTime: nowIso(ctx),

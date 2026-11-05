@@ -82,6 +82,7 @@ export const ARTIFACT_KINDS = [
   'knowledge_entry',
   'free_note',
 ] as const;
+
 export const artifactKindSchema = z.enum(ARTIFACT_KINDS);
 export type ArtifactKind = z.infer<typeof artifactKindSchema>;
 
@@ -92,6 +93,39 @@ export type AuthorType = z.infer<typeof authorTypeSchema>;
 export const ROLES = ['requester', 'consultant', 'developer', 'ops'] as const;
 export const roleSchema = z.enum(ROLES);
 export type Role = z.infer<typeof roleSchema>;
+
+/**
+ * Stage autonomy (docs/003 §2.7, docs/005 §3.2): `observe` stages only produce a
+ * draft and stop at `waiting_human`; `auto` stages advance per the gate rules.
+ */
+export const AUTONOMY_MODES = ['auto', 'observe'] as const;
+export const autonomyModeSchema = z.enum(AUTONOMY_MODES);
+export type AutonomyMode = z.infer<typeof autonomyModeSchema>;
+
+/**
+ * Decidable checklist assertions (docs/003 §2.2). Templates may only reference
+ * these keys; unknown assertions are rejected when the template is loaded.
+ */
+export const CHECKLIST_ASSERTIONS = [
+  'sections_present',
+  'inputs_referenced',
+  'not_stale',
+  'acceptance_covered',
+] as const;
+export const checklistAssertionSchema = z.enum(CHECKLIST_ASSERTIONS);
+export type ChecklistAssertion = z.infer<typeof checklistAssertionSchema>;
+
+/** In-product notifications ("必须你处理" only, docs/005 §5). */
+export const NOTIFICATION_KINDS = [
+  'approval.requested',
+  'approval.decided',
+  'approval.expired',
+  'stage.waiting_human',
+  'stage.failed',
+] as const;
+export const notificationKindSchema = z.enum(NOTIFICATION_KINDS);
+export type NotificationKind = z.infer<typeof notificationKindSchema>;
+
 
 export const PRIORITIES = ['high', 'normal', 'low'] as const;
 export const prioritySchema = z.enum(PRIORITIES);
@@ -152,8 +186,11 @@ export const EVENT_TYPES = [
   'artifact.created',
   'artifact.approved',
   'artifact.rejected',
+  'artifact.stale',
   'approval.requested',
   'approval.decided',
+  'approval.expired',
+  'approval.withdrawn',
   'executor.registered',
   'executor.offline',
 ] as const;

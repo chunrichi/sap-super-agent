@@ -44,8 +44,11 @@
               "artifact.created",
               "artifact.approved",
               "artifact.rejected",
+              "artifact.stale",
               "approval.requested",
               "approval.decided",
+              "approval.expired",
+              "approval.withdrawn",
               "executor.registered",
               "executor.offline"
             ]

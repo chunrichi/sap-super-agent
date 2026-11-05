@@ -312,11 +312,12 @@ export function newHookReceiptId(): string {
 
 export function getHookReceiptByIdempotencyKey(
   db: DatabaseSync,
+  hookId: string,
   idempotencyKey: string,
 ): HookReceiptRecord | null {
   const row = db
-    .prepare('SELECT * FROM hook_receipts WHERE idempotency_key = ?')
-    .get(idempotencyKey) as RawReceiptRow | undefined;
+    .prepare('SELECT * FROM hook_receipts WHERE hook_id = ? AND idempotency_key = ?')
+    .get(hookId, idempotencyKey) as RawReceiptRow | undefined;
   return row === undefined ? null : rowToReceipt(row);
 }
 

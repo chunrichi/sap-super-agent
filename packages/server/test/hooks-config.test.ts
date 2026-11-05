@@ -40,7 +40,7 @@ const VALID_HOOK = `
 hooks:
   - id: http-example
     target: http
-    url: http://127.0.0.1:9099/hooks/example
+    url: http://127.0.0.1:1/hooks/example
     events: [demand.created]
     secretRef: env:SA_HOOKS_HTTP_SECRET
     enabled: true
@@ -87,7 +87,7 @@ describe('resolveHooksConfig (docs/008 §6)', () => {
       'dup.yaml',
       `${VALID_HOOK}  - id: http-example
     target: http
-    url: http://127.0.0.1:9099/other
+    url: http://127.0.0.1:1/other
     events: [stage.done]
     secretRef: env:SA_HOOKS_HTTP_SECRET
     enabled: false
@@ -115,6 +115,19 @@ describe('resolveHooksConfig (docs/008 §6)', () => {
     expect(() => resolveHooksConfig({ SA_HOOKS_CONFIG: writeConfig(dir, 'ok.yaml', VALID_HOOK) }, dir)).toThrow(
       /hook "http-example" is enabled but secret "env:SA_HOOKS_HTTP_SECRET" is not set.*export SA_HOOKS_HTTP_SECRET/s,
     );
+  });
+
+  it('treats an empty/comments-only config file as valid and all-disabled', () => {
+    const dir = tempDir();
+    for (const [name, text] of [
+      ['empty.yaml', ''],
+      ['comments.yaml', '# nothing configured yet\n'],
+    ] as const) {
+      const config = resolveHooksConfig({ SA_HOOKS_CONFIG: writeConfig(dir, name, text) }, dir);
+      expect(config.loaded, name).toBe(true);
+      expect(config.hooks, name).toEqual([]);
+      expect(config.settings.enabled, name).toBe(false);
+    }
   });
 
   it('can resolve a read-only config without enabled-hook secrets (hooks:reconcile)', () => {
@@ -271,13 +284,13 @@ describe('hook trigger (docs/008 §5, task book §1.2)', () => {
 hooks:
   - id: http-example
     target: http
-    url: http://127.0.0.1:9099/hooks/example
+    url: http://127.0.0.1:1/hooks/example
     events: [demand.created]
     secretRef: env:SA_HOOKS_HTTP_SECRET
     enabled: true
   - id: disabled-example
     target: http
-    url: http://127.0.0.1:9099/disabled
+    url: http://127.0.0.1:1/disabled
     events: [demand.created]
     secretRef: env:DISABLED_SECRET
     enabled: false

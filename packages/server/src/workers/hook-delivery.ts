@@ -17,7 +17,6 @@ import { buildHookEnvelope } from '../hooks/hook-envelope.js';
 import { buildHookSignatureHeaders } from '../hooks/hook-signature.js';
 import {
   appendHookEvent,
-  findHookOutboxByEventId,
   getHookEnqueueCursor,
   HOOK_CANCEL_TRIGGER_TYPES,
   hookIdFromTarget,
@@ -31,7 +30,6 @@ import {
   markHookOutboxRetry,
   markHookOutboxSent,
   parseHookEnvelope,
-  recentHookAttempt,
   setHookEnqueueCursor,
   type HookOutboxRow,
 } from '../hooks/hook-store.js';
@@ -446,9 +444,3 @@ export class HookDeliveryWorker {
     if (this.ctx.config.logger) console.error(`[hooks] ${message}`);
   }
 }
-
-// Re-exported for the management route (GET /hooks last-attempt summary).
-export { findHookOutboxByEventId, recentHookAttempt };
-
-// Keep the type export available to routes without importing the store directly.
-export type { HookOutboxRow };

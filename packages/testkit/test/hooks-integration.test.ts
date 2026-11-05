@@ -683,6 +683,45 @@ describe('generic Hook inbound receipts (docs/008 §4)', () => {
     expect(queryDb(context, 'SELECT COUNT(*) AS total FROM hook_receipts')).toEqual([{ total: 0 }]);
   });
 
+  it('scopes receipt idempotency per hook (same key on two hooks is not a duplicate)', async () => {
+    const context = await bootHooks({
+      events: ['demand.created'],
+      hooksYaml: `
+hooks:
+  - id: http-example
+    target: http
+    url: http://127.0.0.1:9099/hooks/example
+    events: [demand.created]
+    secretRef: env:SA_HOOKS_HTTP_SECRET
+    enabled: true
+  - id: second-hook
+    target: http
+    url: http://127.0.0.1:9099/hooks/second
+    events: [demand.created]
+    secretRef: env:SA_HOOKS_HTTP_SECRET
+    enabled: true
+`,
+    });
+    const body = receiptBody('EXT-SHARED:created', 'EXT-SHARED');
+    const first = await postReceipt(context, 'http-example', body);
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    expect(first.body).toMatchObject({ duplicate: false, hookId: 'http-example' });
+
+    const second = await postReceipt(context, 'second-hook', body);
+    expect(second.status, JSON.stringify(second.body)).toBe(200);
+    expect(second.body).toMatchObject({ duplicate: false, hookId: 'second-hook' });
+    expect(second.body.receiptId).not.toBe(first.body.receiptId);
+
+    const rows = queryDb<{ hook_id: string; idempotency_key: string }>(
+      context,
+      'SELECT hook_id, idempotency_key FROM hook_receipts ORDER BY hook_id',
+    );
+    expect(rows).toEqual([
+      { hook_id: 'http-example', idempotency_key: 'EXT-SHARED:created' },
+      { hook_id: 'second-hook', idempotency_key: 'EXT-SHARED:created' },
+    ]);
+  });
+
   it('records an unknown externalId without failing or advancing the stage (v1)', async () => {
     const context = await bootHooks({ events: ['demand.created'] });
     const demandId = await createDemand(context, 'R-4004 回执未知外部单');

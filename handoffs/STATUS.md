@@ -93,6 +93,7 @@
 | 2026-11-05 | S4 §1.8 测试与文档：新增 e2e `packages/testkit/e2e/hooks.e2e.test.ts`（进程内单链路：需求→阶段事件→目标收到信封+HMAC 校验→注入 5xx×2 退避到成功→400 死信可见→replay（同一 idempotencyKey、同 Idempotency-Key 幂等缓存）→签名回执+重复回执幂等+过期时间窗 401→`reconcileHooks` 两类差异；覆盖 docs/009 #11 Hook 侧与任务书 §2 五条冒烟）；`pnpm e2e` 16/16；docs/007 S4 状态、docs/008 replay 幂等口径、README Hook 快速开始 + 门禁命令同步 |
 | 2026-11-05 | S4 对账 CLI 收尾修正：`resolveHooksConfig` 增加只读模式（`requireSecrets: false`），`hooks:reconcile` 无需导出 secret（只读不签名/验签）；`scripts/hooks-reconcile.mjs` 直接 spawn tsx（不经 `pnpm exec`）以保留退出码 0/3/2。手工冒烟实测：真实控制平面 + FakeHookTarget 落盘 state → CLI `--sla-hours 0` 输出 4 差异（external_only 1 + dead_letter 1 + delivered_without_receipt 1 + unknown_receipt 1，外部列表 2 items compared），`--fail-on-diff` 退出 3、默认退出 0 |
 | 2026-11-05 | S4 完成自测（待 Lead/用户评审）：`pnpm check` ✅ 438 tests（contract 47/7/22）、`pnpm e2e` ✅ 16/16（4.07s）、`pnpm build` ✅ 8/8、`pnpm hooks:reconcile` ✅（真实 state 冒烟 4 差异，退出码 0/3）；任务书 §2 五条冒烟以 e2e/集成 + 真实 state CLI 复现（见「S4 验收复现」）；分支 `feat/s4-hooks` 未 push、未合入 main |
+| 2026-11-05 | S4 独立复核（Lead 视角）修复：发现回执幂等键跨 Hook 冲突（`hook_receipts.idempotency_key` 全局 UNIQUE + 查询未按 hook 过滤，两个集成用同一外部幂等键时第二个会被误判 `duplicate:true`）→ v6 改为 `(hook_id, idempotency_key)` 唯一 + 查询按 hook 过滤 + 回归测试（同 key 两个 hook 各自落库）；空/纯注释 hooks 配置文件按“全部禁用”处理（原报错）并加测试；`retry.deadLetter` 文档注明是目标提示字段、控制平面一律死信；测试用固定端口 9099 改为必然拒绝的 `127.0.0.1:1` 消除环境依赖。`pnpm install --frozen-lockfile --offline` ✅ |
 
 ## H2 Phase A 偏差与遗留（交接给 H1 / Lead / 用户）
 

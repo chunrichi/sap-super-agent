@@ -154,7 +154,8 @@ export function resolveHooksConfig(
 
   let raw: unknown;
   try {
-    raw = parse(yamlText);
+    // An empty/comments-only file is a valid "no hooks configured" config.
+    raw = parse(yamlText) ?? {};
   } catch (error) {
     throw new Error(
       `cannot parse hook config "${configPath}" as YAML: ${error instanceof Error ? error.message : String(error)}; ` +

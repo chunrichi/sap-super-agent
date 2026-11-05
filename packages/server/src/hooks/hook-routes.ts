@@ -191,8 +191,10 @@ async function handleHookReceipt(
   }
   const body = parseInput(hookReceiptBodySchema, parsedJson, 'hook receipt body');
 
+  // Idempotency is scoped per hook: the same external idempotencyKey may be
+  // used by two independent integrations (e.g. JIRA and CHARM).
   const existing =
-    getHookReceiptByIdempotencyKey(ctx.db, body.idempotencyKey) ??
+    getHookReceiptByIdempotencyKey(ctx.db, hook.id, body.idempotencyKey) ??
     getHookReceiptByDelivery(ctx.db, hook.id, verification.delivery);
   if (existing !== null) {
     return sendValidated(reply, hookReceiptResponseSchema, {

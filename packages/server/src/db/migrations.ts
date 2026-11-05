@@ -300,7 +300,7 @@ CREATE TABLE hook_state (
 CREATE TABLE hook_receipts (
   id TEXT PRIMARY KEY,
   hook_id TEXT NOT NULL,
-  idempotency_key TEXT NOT NULL UNIQUE,
+  idempotency_key TEXT NOT NULL,
   delivery_id TEXT NOT NULL,
   external_id TEXT NOT NULL,
   status TEXT NOT NULL,
@@ -308,6 +308,9 @@ CREATE TABLE hook_receipts (
   received_at TEXT NOT NULL
 );
 CREATE INDEX idx_hook_receipts_hook ON hook_receipts (hook_id, received_at);
+-- Receipt idempotency is scoped per hook: two integrations may use the same
+-- external idempotencyKey independently.
+CREATE UNIQUE INDEX idx_hook_receipts_idempotency ON hook_receipts (hook_id, idempotency_key);
 CREATE INDEX idx_hook_receipts_delivery ON hook_receipts (hook_id, delivery_id);
 CREATE INDEX idx_hook_receipts_external ON hook_receipts (external_id);
 `,

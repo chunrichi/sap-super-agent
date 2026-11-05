@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "eventType": {
+      "type": "string",
+      "enum": [
+        "demand.created",
+        "demand.updated",
+        "demand.cancelled",
+        "stage.ready",
+        "stage.started",
+        "stage.done",
+        "stage.failed",
+        "stage.waiting_human",
+        "stage.cancelled",
+        "task.created",
+        "task.offered",
+        "task.claimed",
+        "task.updated",
+        "task.progress",
+        "task.completed",
+        "task.failed",
+        "task.released",
+        "task.transferred",
+        "task.cancelled",
+        "assignment.created",
+        "assignment.completed",
+        "assignment.released",
+        "assignment.expired",
+        "artifact.created",
+        "artifact.approved",
+        "artifact.rejected",
+        "artifact.stale",
+        "approval.requested",
+        "approval.decided",
+        "approval.expired",
+        "approval.withdrawn",
+        "executor.registered",
+        "executor.offline",
+        "hook.attempted",
+        "hook.delivered",
+        "hook.dead",
+        "hook.receipt",
+        "hook.cancelled"
+      ]
+    },
+    "eventVersion": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+    },
+    "subject": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "demand",
+            "stage_run",
+            "task",
+            "assignment",
+            "artifact",
+            "approval",
+            "executor",
+            "system",
+            "hook"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "demandId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "demandNo": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "stageRunId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "artifactId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "version": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "type",
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "payload": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {}
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "retry": {
+      "type": "object",
+      "properties": {
+        "maxAttempts": {
+          "default": 5,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 20
+        },
+        "backoff": {
+          "default": "exponential",
+          "type": "string",
+          "enum": [
+            "exponential"
+          ]
+        },
+        "deadLetter": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "maxAttempts",
+        "backoff",
+        "deadLetter"
+      ],
+      "additionalProperties": false
+    },
+    "traceId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    }
+  },
+  "required": [
+    "eventId",
+    "eventType",
+    "eventVersion",
+    "occurredAt",
+    "subject",
+    "payload",
+    "idempotencyKey",
+    "retry",
+    "traceId"
+  ],
+  "additionalProperties": false
+}

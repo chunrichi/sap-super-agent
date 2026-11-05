@@ -1,0 +1,58 @@
+# S4 Hook configuration (docs/008 §6).
+#
+#   SA_HOOKS_CONFIG=examples/hooks.yaml pnpm dev
+#
+# Every hook ships disabled so a plain `pnpm dev` is byte-for-byte the H0–S3
+# behaviour. Enable one by flipping `enabled: true` and exporting its secret:
+#
+#   export SA_HOOKS_HTTP_SECRET=dev-only-secret
+#
+# Secrets are referenced as `env:NAME` and never live in this file, the database
+# or the logs. Field mapping belongs to the adapter/config layer, not the core
+# stage graph; the four JIRA/CHARM/Confluence/Teams blocks are placeholders with
+# detailed notes in examples/hooks/.
+hooks:
+  # Generic `http` example target: receives the uniform envelope (docs/008 §2)
+  # and answers 2xx. Run any local receiver, e.g. a tiny `node -e` server.
+  - id: http-example
+    target: http
+    url: http://127.0.0.1:9099/hooks/example
+    events: [artifact.approved, stage.done]
+    secretRef: env:SA_HOOKS_HTTP_SECRET
+    enabled: false
+    retry: { maxAttempts: 5, backoff: exponential, deadLetter: true }
+
+  # --- Placeholder adapters (docs/008 §3, examples/hooks/*.yaml) ------------
+  # They are valid config on purpose (schema-checked) but no business logic is
+  # implemented in this repository.
+  - id: jira
+    target: http
+    url: https://jira.example.com/rest/api/3/issue
+    events: [artifact.approved]
+    secretRef: env:JIRA_HOOK_SECRET
+    enabled: false
+    retry: { maxAttempts: 5, backoff: exponential, deadLetter: true }
+
+  - id: charm
+    target: http
+    url: https://charm.example.com/api/transport-requests
+    events: [artifact.approved]
+    secretRef: env:CHARM_HOOK_SECRET
+    enabled: false
+    retry: { maxAttempts: 5, backoff: exponential, deadLetter: true }
+
+  - id: confluence
+    target: http
+    url: https://confluence.example.com/rest/api/content
+    events: [stage.done]
+    secretRef: env:CONFLUENCE_HOOK_SECRET
+    enabled: false
+    retry: { maxAttempts: 5, backoff: exponential, deadLetter: true }
+
+  - id: teams
+    target: http
+    url: https://example.webhook.office.com/webhookb2/placeholder
+    events: [stage.waiting_human, approval.requested]
+    secretRef: env:TEAMS_HOOK_SECRET
+    enabled: false
+    retry: { maxAttempts: 3, backoff: exponential, deadLetter: true }

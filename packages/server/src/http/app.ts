@@ -13,6 +13,8 @@ import { registerNotificationRoutes } from './routes/notifications.js';
 import { registerTemplateRoutes } from './routes/templates.js';
 // --- H2: SAP ICF inbound webhook + writeback status (docs/003 §4.5, docs/004 §3) ---
 import { registerSapRoutes } from '../hooks/sap.js';
+// --- S4: generic Hook management/replay/receipt surfaces (docs/003 §4.7) ---
+import { registerHookRoutes } from '../hooks/hook-routes.js';
 import { registerIdempotency } from './idempotency.js';
 import type { ServerContext } from '../types.js';
 
@@ -60,5 +62,7 @@ export function createApp(ctx: ServerContext): FastifyInstance {
   registerEventRoutes(app, ctx);
   // --- H2: SAP ICF integration (no-op unless SA_SAP_* is configured) ---
   registerSapRoutes(app, ctx);
+  // --- S4: generic Hook management + replay (root paths, docs/003 §4.7) ---
+  registerHookRoutes(app, ctx);
   return app;
 }

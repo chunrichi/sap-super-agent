@@ -1,0 +1,10 @@
+{
+  "eventType": "hook.receipt",
+  "idempotencyKey": "JIRA-1234:created",
+  "occurredAt": "2026-11-05T12:03:00.000Z",
+  "payload": {
+    "externalId": "JIRA-1234",
+    "status": "created",
+    "detailRef": "https://jira.example.com/browse/JIRA-1234"
+  }
+}

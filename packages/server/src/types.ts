@@ -5,6 +5,8 @@ import type { TemplateRegistry } from './templates.js';
 import type { EventSocketHub } from './ws/event-socket.js';
 // --- H2: SAP ICF integration (docs/004 §3) ---
 import type { SapIntegrationConfig } from './hooks/sap-config.js';
+// --- S4: generic Hook runtime config (docs/008 §6) ---
+import type { HooksRuntimeConfig } from './hooks/hook-config.js';
 
 /** Options accepted by `startServer` (all optional except `stateDir`). */
 export interface ServerOptions {
@@ -78,4 +80,10 @@ export interface ServerContext {
    * treats a missing value as "SAP integration disabled".
    */
   readonly sap?: SapIntegrationConfig;
+  /**
+   * S4: resolved generic Hook config (docs/008 §6). Always present; a missing
+   * config file yields `loaded:false` with every hook disabled, so H0–S3
+   * surfaces behave exactly as before.
+   */
+  readonly hooks: HooksRuntimeConfig;
 }

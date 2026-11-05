@@ -1,0 +1,29 @@
+# JIRA issue — PLACEHOLDER adapter (docs/008 §3). No business logic ships in
+# this repository; this file documents the field mapping and is valid config.
+#
+# Logical action : hook.jira.issue.ensure
+# Trigger        : artifact.approved (requirement-analysis gate G1 passed)
+# Envelope       : docs/008 §2 (eventType = the persisted source event)
+# payload mapping:
+#   project        <- demand.workspaceBinding.projectKey | requester.orgUnit
+#   issueType      <- adapter setting (Task by default)
+#   summary        <- "R-<demandNo> <demand.title>"
+#   descriptionRef <- artifact version contentRef (never inline the body)
+#   priority       <- demand.priority mapped high/normal/low -> Highest/High/Medium
+#   demandNo       <- demand.no (fallback: demandId)
+# Idempotency    : stable envelope idempotencyKey (<demandId>:jira:sha256(eventId));
+#                  JIRA is not idempotent by itself -> search by demandNo/label
+#                  first, then create; the 2xx externalId (JIRA key) is recorded
+#                  in hook.delivered and returned by the receipt callback.
+# Failure        : 5xx/429/timeout -> automatic backoff; 4xx -> dead letter
+#                  (visible in GET /hooks); daily reconcile by demandNo.
+# Receipt        : POST /hooks/jira/receipt {externalId: "R-2041-1", status: created}
+hooks:
+  - id: jira
+    target: http
+    url: https://jira.example.com/rest/api/3/issue
+    events: [artifact.approved]
+    secretRef: env:JIRA_HOOK_SECRET
+    enabled: false
+    retry: { maxAttempts: 5, backoff: exponential, deadLetter: true }
+    # reconcileUrl: https://jira.example.com/rest/api/3/search?jql=labels%3Dsap-superagent

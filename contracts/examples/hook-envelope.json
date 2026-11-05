@@ -1,0 +1,25 @@
+{
+  "eventId": "01J8ZQ9W3K5M2V7X4C6B8N0P1Q",
+  "eventType": "artifact.approved",
+  "eventVersion": 1,
+  "occurredAt": "2026-11-05T12:00:00.000Z",
+  "subject": {
+    "type": "artifact",
+    "id": "01J8ZQ9W3K5M2V7X4C6B8N0P1R",
+    "demandId": "4a3f9c2e7b1d48f0a6c5e2d9b8f7a1c3",
+    "stageRunId": "01J8ZQ9W3K5M2V7X4C6B8N0P1S",
+    "artifactId": "01J8ZQ9W3K5M2V7X4C6B8N0P1R",
+    "version": 2
+  },
+  "payload": {
+    "artifactId": "01J8ZQ9W3K5M2V7X4C6B8N0P1R",
+    "gateKey": "G1"
+  },
+  "idempotencyKey": "4a3f9c2e7b1d48f0a6c5e2d9b8f7a1c3:http-example:9f2c0a",
+  "retry": {
+    "maxAttempts": 5,
+    "backoff": "exponential",
+    "deadLetter": true
+  },
+  "traceId": "01J8ZQ9W3K5M2V7X4C6B8N0P1Q"
+}

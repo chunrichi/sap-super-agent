@@ -58,6 +58,15 @@
 
 ### S4 Hook 与外部系统
 
+> **状态（2026-11-05）：S4 已完成**（分支 `feat/s4-hooks`，基线 `main@4c15394`；待 Lead/用户评审与 PR）。交付：
+> 契约先行（`packages/protocol/src/hooks.ts` + `contracts/` 47 schemas / 7 examples / 22 routes；docs/003 §4.4/§4.5/§4.7 与 docs/008 定稿）；
+> `SA_HOOKS_CONFIG` 配置加载（缺失=全禁用，显式配置非法/缺 secret 启动即报错并给出改法；`env:NAME` secretRef 只在内存）；
+> 事件订阅 → 共享 `outbox`（`target='hook:<id>'`）→ 独立 `http` 投递 worker（HMAC `X-SA-*`、2s 指数退避上限 5min、最多 5 次、429 `Retry-After`、4xx 死信、
+> `hook.attempted/delivered/dead` 事件、发送前信封 schema 校验、取消语义）；`GET /hooks` + `POST /hooks/{id}/replay`（Idempotency-Key 幂等）；
+> 入站回执 `POST /hooks/{target}/receipt`（迁移 v6 `hook_receipts`，验签/时间窗/重复幂等/未知 externalId 只记录，v1 只记录不推进阶段）；
+> `pnpm hooks:reconcile`（两类差异、只报告不修复）；`examples/hooks/` 四个占位适配器（JIRA/CHARM/Confluence/Teams，只配置样例）。
+> 验证：`pnpm check`（**440 tests**，contract 47 schemas / 7 examples / 22 routes）、`pnpm e2e`（**16/16，4.04s**，新增通用 Hook 全链路）、`pnpm build`、`pnpm hooks:reconcile`（真实 state 冒烟见 [handoffs/STATUS.md](../handoffs/STATUS.md)）；docs/009 #11 Hook 侧断言见 testkit 集成/e2e。
+
 - **目标**：PDO 的中间步骤有正式入口。
 - **交付**：Hook 契约（事件名、payload schema、幂等键、重试/死信）、`http` 示例目标、JIRA / CHARM / Confluence / Teams 四个占位适配器（文档 + 配置样例，不实现业务逻辑）、出站队列与重放命令。
 - **验收**：阶段事件可配置触发一个 HTTP 目标；失败重试可见；手工重放不重复建单；契约见 [008-hooks.md](008-hooks.md)。

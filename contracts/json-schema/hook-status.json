@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "hooks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "target": {
+            "type": "string",
+            "enum": [
+              "http"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "demand.created",
+                "demand.updated",
+                "demand.cancelled",
+                "stage.ready",
+                "stage.started",
+                "stage.done",
+                "stage.failed",
+                "stage.waiting_human",
+                "stage.cancelled",
+                "task.created",
+                "task.offered",
+                "task.claimed",
+                "task.updated",
+                "task.progress",
+                "task.completed",
+                "task.failed",
+                "task.released",
+                "task.transferred",
+                "task.cancelled",
+                "assignment.created",
+                "assignment.completed",
+                "assignment.released",
+                "assignment.expired",
+                "artifact.created",
+                "artifact.approved",
+                "artifact.rejected",
+                "artifact.stale",
+                "approval.requested",
+                "approval.decided",
+                "approval.expired",
+                "approval.withdrawn",
+                "executor.registered",
+                "executor.offline",
+                "hook.attempted",
+                "hook.delivered",
+                "hook.dead",
+                "hook.receipt",
+                "hook.cancelled"
+              ]
+            }
+          },
+          "queue": {
+            "type": "object",
+            "properties": {
+              "pending": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "sent": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "dead": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "cancelled": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "pending",
+              "sent",
+              "dead",
+              "cancelled"
+            ],
+            "additionalProperties": false
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastAttempt": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  "attempt": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "error": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "at",
+                  "attempt",
+                  "ok",
+                  "error"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "target",
+          "enabled",
+          "events",
+          "queue",
+          "lastError",
+          "lastAttempt"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "serverTime": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+    }
+  },
+  "required": [
+    "hooks",
+    "serverTime"
+  ],
+  "additionalProperties": false
+}

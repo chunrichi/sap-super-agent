@@ -6,9 +6,9 @@
 ## 0. 一分钟了解
 
 - **项目**：面向 SAP 研发交付的 super-agent。需求记录在 SAP（ICF + MIME 自建 Web），编排在可移植控制平面（本地 M1 / 独立服务 M2），编码在开发者 VSCode（Copilot Chat 人机协作），重复文档由服务端 AI（BYOK）主动生成。
-- **当前状态（2026-11-05）**：**H0 / S0 已完成**（`feat/h0-walking-skeleton` @ `a9e5e98`，已推送）；**H1 / S1 已完成**（`feat/h1-gates` @ `238fd08`：模板/门禁/checklist/工件版本与 stale/autonomy/golden set）；**H2 / S2 Phase A 已完成，Phase B blocked**（`feat/h2-sap` @ `0eb35c4`：fake ICF + `sap-adapter` + `/hooks/sap` + 回写 worker + `sap/` ABAP 源文件，未连接真实系统、未做 SAP 写操作）。H1+H2 已在 `integrate/h1-h2` 合并验收：`pnpm check`（**350 tests**）/ `pnpm e2e`（**9/9**）/ `pnpm eval:golden` / `pnpm sap:check` / `pnpm build` 全绿 + curl 手工冒烟通过。**已通过 PR #1（H0）/ #2（H1）/ #3（H2）合入 `main`**（H1 merge `a510be2`、H2 merge `a242afe`；main CI 全绿，main 树与 `integrate/h1-h2` 一致）。详见 [handoffs/STATUS.md](handoffs/STATUS.md) 的「Lead 集成验收」。**2026-11-05 用户决策**：H2 Phase B 用本地包 `$ZSA`（无 TR，对象仅测试系统生效）+ abap-cli 推进（abapGit 本轮不实现）；S3 任务书已起草：[handoffs/S3-multi-user-dispatch.md](handoffs/S3-multi-user-dispatch.md)。
-- **当前冲刺（2026-11-05 起）**：① **H2 Phase B**：用 abap-cli 在本地包 `$ZSA` 建 SAP 对象/激活/ABAP Unit；② **S3 多人在线与派发**：按 [handoffs/S3-multi-user-dispatch.md](handoffs/S3-multi-user-dispatch.md) 推进。两者可并行（写范围不重叠），worktree 隔离。
-- **下一棒**：S0/S1/S2-PhaseA 已全部在 `main`（CI 绿）。当前待办：① **H2-B**（[H2 任务书](handoffs/H2-sap-icf-mime.md) §1.6 Phase B）：本地包 `$ZSA` + abap-cli 建对象/激活/ABAP Unit；端到端回写仍缺控制平面可达性 + HMAC + SSO；② **S3**（[任务书](handoffs/S3-multi-user-dispatch.md)）：WS 资格过滤、客户端实时/重连、用户并发与任务转交、工作区/多窗口、任务箱接审批；③ 发布前真实 VSCode Extension Host/VSIX 冒烟。执行协调与 worktree 用法见 [handoffs/H1-H2-execution-handoff.md](handoffs/H1-H2-execution-handoff.md)。
+- **当前状态（2026-11-05）**：**S0–S3 与 H2 Phase B 已完成并合入 `main`**（PR #1–#7；main = `08b5cdc`，CI 全绿）。H1（门禁/模板/checklist/golden set）、H2 Phase A（fake ICF + `sap-adapter` + `/hooks/sap` + 回写 worker）+ **Phase B**（测试系统本地包 `$ZSA`：6 表/3 类/ICF `ZSA`/MIME/ABAP Unit 6/6，全部 active）、S3（WS `task.offered` 资格过滤、`maxConcurrentPerUser`、`POST /tasks/{id}/transfer`、客户端实时/审批组、多执行器 e2e）均已完成。main 门禁：`pnpm check`（**402 tests**）/ `pnpm e2e`（**15/15**）/ `pnpm eval:golden` / `pnpm sap:check`（离线 5 pass + 在线 6 pass）/ `pnpm build` 全绿。剩余为**人工/环境输入项**（H2-B 端到端 SSO/控制平面可达/HMAC/SM36、真机 VSIX 冒烟、abap-cli issue #34），详见 [handoffs/STATUS.md](handoffs/STATUS.md)「Lead 集成验收（S3 + H2-B）」。
+- **当前冲刺（2026-11-05，已完成）**：H2 Phase B（本地包 `$ZSA` + abap-cli，PR #7）与 S3 多人在线与派发（PR #6）并行完成并合入 `main`；偏差与阻塞项见 STATUS。
+- **下一棒**：① **H2-B 端到端人工项**（Basis SSO/ICF 登录、控制平面可从测试系统访问 + `SA_SAP_HOOK_SECRET` 注入、控制平面→SAP 服务账号、`ZSA_OUTBOX_PUSH` SM36/bgRFC 调度）；② 发布前真实 VSCode Extension Host/VSIX 冒烟；③ abap-cli 上游 [issue #34](https://github.com/chunrichi/abap-cli/issues/34) 修复后把 6 张表重建为 not-extensible；④ 下一路线图切片 **S4（Hook 契约 + `http` 示例）** 需先新建任务书再认领。协调与 worktree 用法见 [handoffs/H1-H2-execution-handoff.md](handoffs/H1-H2-execution-handoff.md)。
 
 ## 1. 阅读顺序
 
@@ -44,14 +44,18 @@
 | **S3** | [handoffs/S3-multi-user-dispatch.md](handoffs/S3-multi-user-dispatch.md) | S3：多人在线与派发（WS 资格过滤、客户端实时、任务转交、工作区匹配、任务箱审批组） | S0–S2 Phase A | `packages/core/**`、`packages/server/**`、`packages/protocol/**`、`packages/clients/vscode/**`、`packages/testkit/**`、`contracts/**`、`docs/003/005/007` |
 
 ```text
-H0（done）──┬──> H1（done）──┐
-            └──> H2（Phase A done）──┴──> main（PR #1/#2/#3，CI 绿）
+H0 ──┬──> H1（done）
+     └──> H2（Phase A + Phase B done：$ZSA 测试系统对象 active）
+               │
+H0/H1/H2A ─────┴──> S3（done：多人在线与派发）
+               │
+               └──> main（PR #1–#7，CI 绿）
 
-main ──┬──> H2-B（todo：$ZSA + abap-cli 建对象/激活/ABAP Unit）
-       └──> S3（todo：多人在线与派发）
+main ──┬──> 人工项：H2-B 端到端（SSO / 控制平面可达 / HMAC / SM36）
+       └──> 发版前：真实 VSCode Extension Host / VSIX 冒烟
 ```
 
-> **当前进度（2026-11-05）**：H0/H1/H2 Phase A done 并已合入 `main`（PR #1/#2/#3）。当前并行任务：**H2-B**（本地包 `$ZSA` + abap-cli）与 **S3**（多人在线与派发），均待认领；worktree 隔离，写范围见各自任务书。状态、落地记录与偏差详见 [handoffs/STATUS.md](handoffs/STATUS.md)。
+> **当前进度（2026-11-05）**：S0–S3 与 H2 Phase B 全部完成并合入 `main`（PR #1–#7，CI 全绿）。剩余为人工/环境输入项与发版前动作；落地记录、最终门禁、偏差与阻塞项详见 [handoffs/STATUS.md](handoffs/STATUS.md) 的「Lead 集成验收（S3 + H2-B）」。
 
 - 同一时刻**一个 Agent 只做一个任务**。需要并行时，在 `handoffs/STATUS.md` 登记 owner + 写范围，避免两个 Agent 改同一目录。
 - H2 与 H1 的 `packages/server` 写范围有交集：H1 只改 `packages/server/src/{core 集成,approvals,templates}.ts`，H2 只改 `packages/server/src/hooks/` 与 `workers/sap-*`；都要改共享文件时在 STATUS.md 协调。
@@ -113,6 +117,7 @@ pnpm e2e
 | M3（SAP 内批处理 AI） | 不在本轮 |
 | 门禁 | H1 默认模板 3 阶段 G1/G3/G4；PDO 6 阶段作为预设 |
 | 多人在线（S3） | 任务书 [handoffs/S3-multi-user-dispatch.md](handoffs/S3-multi-user-dispatch.md)；worktree `.sap-superagent-worktrees/s3`，分支 `feat/s3-<slug>` |
+| H2-B 剩余 | 端到端需人工：Basis SSO/ICF 登录、控制平面可从测试系统访问 + HMAC secret 注入、控制平面→SAP 服务账号、SM36/bgRFC 调度；本轮只做本地包对象 + ABAP Unit + ICF 节点部署与离线/在线校验 |
 
 遇到 [001 §6](docs/001-review.md) 的待确认项时，按本表默认推进，并在报告里标注。
 

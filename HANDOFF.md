@@ -6,9 +6,9 @@
 ## 0. 一分钟了解
 
 - **项目**：面向 SAP 研发交付的 super-agent。需求记录在 SAP（ICF + MIME 自建 Web），编排在可移植控制平面（本地 M1 / 独立服务 M2），编码在开发者 VSCode（Copilot Chat 人机协作），重复文档由服务端 AI（BYOK）主动生成。
-- **当前状态（2026-11-05）**：设计完成并提交；**代码为零**；仓库已初始化（Apache-2.0 + DCO，git 历史含设计与 handoff）。
-- **本轮目标**：完成路线图的 **S1（门禁与模板）** 与 **S2（SAP 需求系统）**。
-- **前提**：S1/S2 都依赖 **S0 walking skeleton**；因此本轮先交付 S0，再做 S1/S2。S2 的 SAP 对象（DDIC/ICF/MIME）可在协议冻结后与 S1 并行。
+- **当前状态（2026-11-05）**：**H0 / S0 walking skeleton 已完成**（分支 `feat/h0-walking-skeleton` @ `d03dc29`，已推送；本机 `pnpm install --frozen-lockfile` / `pnpm check`（252 tests）/ `pnpm e2e`（4/4）/ `pnpm build` 全绿；详见 [handoffs/STATUS.md](handoffs/STATUS.md)）。
+- **本轮目标**：完成路线图的 **S1（门禁与模板，H1）** 与 **S2（SAP 需求系统，H2）**——两者依赖已满足，可认领。
+- **下一棒**：先读 [handoffs/H1-H2-execution-handoff.md](handoffs/H1-H2-execution-handoff.md)：H0 可复用接口、H1/H2 实施顺序、共享文件协调规则、环境坑与可直接复制的启动 Prompt。S2 的 SAP 对象（DDIC/ICF/MIME）可在协议冻结后与 S1 并行。
 
 ## 1. 阅读顺序
 
@@ -43,9 +43,11 @@
 | **H2** | [handoffs/H2-sap-icf-mime.md](handoffs/H2-sap-icf-mime.md) | S2：SAP DDIC + ICF JSON + MIME Web + 事件 outbox + `sap-adapter` | H0（协议冻结；DDIC/ICF 可提前） | `sap/**`、`packages/sap-adapter/**`、`packages/server/src/hooks/sap*`、`packages/server/src/workers/sap*` |
 
 ```text
-H0 ──┬──> H1
-     └──> H2（SAP 对象可在 H0 期间先行，但联调需 H0 的 /hooks/sap 与 sap-adapter 接口）
+H0（done）──┬──> H1（todo）
+            └──> H2（todo；SAP 对象可先行，联调需 H2 自己实现 /hooks/sap 与 sap-adapter）
 ```
+
+> **当前进度（2026-11-05）**：H0 done；H1/H2 已解除阻塞（STATUS 中为 `todo`）。H1/H2 执行交接、并行协调与启动 Prompt 见 [handoffs/H1-H2-execution-handoff.md](handoffs/H1-H2-execution-handoff.md)。
 
 - 同一时刻**一个 Agent 只做一个任务**。需要并行时，在 `handoffs/STATUS.md` 登记 owner + 写范围，避免两个 Agent 改同一目录。
 - H2 与 H1 的 `packages/server` 写范围有交集：H1 只改 `packages/server/src/{core 集成,approvals,templates}.ts`，H2 只改 `packages/server/src/hooks/` 与 `workers/sap-*`；都要改共享文件时在 STATUS.md 协调。
@@ -71,6 +73,7 @@ pnpm e2e
 
 没有外部模型时：使用 `fake` provider（`SA_AI_PROVIDER=fake`），e2e 不依赖网络。
 没有 SAP 测试系统时：H2 先交付"本地 fake ICF + abapGit 就绪对象"，在 STATUS.md 标注 `phase A`；有系统时再跑 `phase B`。
+手工冒烟注意：本机 3080 被 DSH Web GUI 占用，用 `pnpm cli dev --port <free>` 或 `SA_HTTP_PORT`；`.env` 会真正加载，同一状态目录有单实例锁。
 
 ## 5. 工作方式（对执行 Agent 的硬约束）
 
@@ -112,6 +115,6 @@ pnpm e2e
 
 让新 Agent 在仓库根目录第一次发言时带上：
 
-> 你在 `/Users/lei/ai_space/sap_super_agent` 工作。先读 `HANDOFF.md`、`handoffs/STATUS.md`、`docs/000–009`，然后从 `handoffs/` 认领一个未完成任务（H0 → H1/H2），严格按任务书的写范围、验收标准执行；完成后更新 `handoffs/STATUS.md` 并回报。不要越过任务边界，不要直推 `main`。
+> 你在 `/Users/lei/ai_space/sap_super_agent` 工作。先读 `HANDOFF.md`、`handoffs/STATUS.md`、`docs/000–009`，然后从 `handoffs/` 认领一个未完成任务（H1 或 H2；H0 已完成，参见 `handoffs/H1-H2-execution-handoff.md`），严格按任务书的写范围、验收标准执行；完成后更新 `handoffs/STATUS.md` 并回报。不要越过任务边界，不要直推 `main`。
 
 Lead/用户可用 `handoffs/STATUS.md` 之外的 `git log --oneline` 与 `pnpm check` 交叉验证进度。

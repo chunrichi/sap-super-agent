@@ -1,0 +1,127 @@
+import { describe, expect, it } from 'vitest';
+import {
+  eventEnvelopeSchema,
+  eventsQuerySchema,
+  eventsResponseSchema,
+  wsClientMessageSchema,
+  wsServerControlMessageSchema,
+  wsTaskOfferedFrameSchema,
+} from '../src/index.js';
+import { DEMAND_ID, NOW, ULID_A, ULID_B } from './fixtures.js';
+
+const envelope = {
+  seq: 42,
+  id: ULID_A,
+  type: 'task.offered',
+  at: NOW,
+  subject: { type: 'task', id: ULID_B },
+  data: { taskId: ULID_B, demandId: DEMAND_ID },
+};
+
+describe('event envelope (docs/003 §4.4)', () => {
+  it('round-trips a valid envelope', () => {
+    const parsed = eventEnvelopeSchema.safeParse(envelope);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.subject.type).toBe('task');
+  });
+
+  it('rejects seq 0 because the global cursor starts at 1', () => {
+    expect(eventEnvelopeSchema.safeParse({ ...envelope, seq: 0 }).success).toBe(false);
+  });
+
+  it('rejects unknown event types', () => {
+    expect(eventEnvelopeSchema.safeParse({ ...envelope, type: 'demand.exploded' }).success).toBe(
+      false,
+    );
+  });
+
+  it('rejects unknown subject types', () => {
+    expect(
+      eventEnvelopeSchema.safeParse({ ...envelope, subject: { type: 'ticket', id: ULID_B } })
+        .success,
+    ).toBe(false);
+  });
+
+  it('requires ISO-8601 UTC timestamps', () => {
+    expect(eventEnvelopeSchema.safeParse({ ...envelope, at: '2026-11-05 00:00:00' }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe('events query/response', () => {
+  it('coerces and defaults cursor + limit', () => {
+    const parsed = eventsQuerySchema.parse({});
+    expect(parsed).toEqual({ after: 0, limit: 200 });
+    expect(eventsQuerySchema.parse({ after: '17', limit: '5' })).toEqual({ after: 17, limit: 5 });
+  });
+
+  it('caps the page size', () => {
+    expect(eventsQuerySchema.safeParse({ limit: 100_000 }).success).toBe(false);
+  });
+
+  it('accepts an empty replay window', () => {
+    const response = eventsResponseSchema.parse({ events: [], lastSeq: 0, earliestSeq: 0 });
+    expect(response.events).toHaveLength(0);
+  });
+});
+
+describe('WS server control messages', () => {
+  it('sends ping and resync_required transport frames', () => {
+    expect(
+      wsServerControlMessageSchema.safeParse({ type: 'server.ping', seq: 3, at: NOW }).success,
+    ).toBe(true);
+    expect(
+      wsServerControlMessageSchema.safeParse({
+        type: 'resync_required',
+        lastSeq: 120,
+        earliestSeq: 100,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects a persisted-looking event as a control frame', () => {
+    expect(
+      wsServerControlMessageSchema.safeParse({ type: 'task.offered', seq: 1 }).success,
+    ).toBe(false);
+  });
+});
+
+describe('task.offered transport frame', () => {
+  const frame = {
+    type: 'task.offered',
+    at: NOW,
+    subject: { type: 'task', id: ULID_A },
+    task: {
+      id: ULID_A,
+      demandId: DEMAND_ID,
+      title: '实现取数逻辑',
+      executorKind: 'vscode',
+      requiredRoles: ['developer'],
+      workspaceBinding: { repo: 'z-sales' },
+      priority: 'normal',
+      dueAt: null,
+    },
+  };
+
+  it('accepts the transport frame without an event cursor', () => {
+    expect(wsTaskOfferedFrameSchema.safeParse(frame).success).toBe(true);
+  });
+
+  it('rejects it when shaped like a persisted event envelope with seq', () => {
+    expect(wsTaskOfferedFrameSchema.safeParse({ ...frame, seq: 7, id: ULID_B }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe('WS client messages', () => {
+  it('accepts pong and ack', () => {
+    expect(wsClientMessageSchema.safeParse({ type: 'client.pong' }).success).toBe(true);
+    expect(wsClientMessageSchema.safeParse({ type: 'client.ack', seq: 12 }).success).toBe(true);
+  });
+
+  it('rejects server-only types coming from a client', () => {
+    expect(wsClientMessageSchema.safeParse({ type: 'server.ping' }).success).toBe(false);
+  });
+});

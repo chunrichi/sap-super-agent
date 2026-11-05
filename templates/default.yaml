@@ -1,0 +1,25 @@
+# H0 minimal walking-skeleton template (docs/003 §2.7).
+# H1 replaces this file with the full 3-stage default (G1/G3/G4) and adds pdo.yaml.
+templateId: default
+version: 1
+stages:
+  - key: requirement_analysis
+    name: 需求分析
+    executorKind: server-ai
+    inputArtifactKinds: []
+    outputArtifactKind: requirement_analysis
+    gate: none
+    maxAttempts: 2
+    checklist:
+      - sections_present
+  - key: dev_implementation
+    name: 开发实现
+    executorKind: vscode
+    inputArtifactKinds:
+      - requirement_analysis
+    outputArtifactKind: code_change
+    gate: none
+    maxAttempts: 3
+    checklist:
+      - inputs_referenced
+gates: []

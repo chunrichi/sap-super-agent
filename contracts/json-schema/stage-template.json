@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "executorKind": {
+      "type": "string",
+      "enum": [
+        "vscode",
+        "server-ai"
+      ]
+    },
+    "inputArtifactKinds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "requirement_analysis",
+          "dev_spec",
+          "code_change",
+          "test_doc",
+          "knowledge_entry",
+          "free_note"
+        ]
+      }
+    },
+    "outputArtifactKind": {
+      "type": "string",
+      "enum": [
+        "requirement_analysis",
+        "dev_spec",
+        "code_change",
+        "test_doc",
+        "knowledge_entry",
+        "free_note"
+      ]
+    },
+    "gate": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "none"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "gateKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "requester",
+                "consultant",
+                "developer",
+                "ops"
+              ]
+            }
+          },
+          "required": [
+            "gateKey",
+            "role"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "maxAttempts": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10
+    },
+    "checklist": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "required": [
+    "key",
+    "name",
+    "executorKind",
+    "inputArtifactKinds",
+    "outputArtifactKind",
+    "gate",
+    "maxAttempts",
+    "checklist"
+  ],
+  "additionalProperties": false
+}

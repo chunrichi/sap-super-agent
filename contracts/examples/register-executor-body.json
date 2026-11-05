@@ -1,0 +1,21 @@
+{
+  "kind": "vscode",
+  "user": "DEV001",
+  "machineIdHash": "sha256:example",
+  "protocolVersion": "1.0.0",
+  "cliVersion": "0.0.0",
+  "capabilities": [
+    "coding"
+  ],
+  "roles": [
+    "developer"
+  ],
+  "workspaces": [
+    {
+      "workspaceKey": "wk-z-sales",
+      "repo": "z-sales",
+      "projectKey": "SALES",
+      "baseBranch": "main"
+    }
+  ]
+}

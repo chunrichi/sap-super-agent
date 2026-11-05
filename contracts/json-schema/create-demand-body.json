@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20000
+    },
+    "acceptanceCriteria": {
+      "default": [],
+      "maxItems": 50,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "priority": {
+      "default": "normal",
+      "type": "string",
+      "enum": [
+        "high",
+        "normal",
+        "low"
+      ]
+    },
+    "requester": {
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "orgUnit": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "userId"
+      ],
+      "additionalProperties": false
+    },
+    "templateId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspaceBinding": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "repo": {
+              "type": "string",
+              "minLength": 1
+            },
+            "projectKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "baseBranch": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "repo"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "title",
+    "description",
+    "acceptanceCriteria",
+    "priority",
+    "requester"
+  ],
+  "additionalProperties": false
+}

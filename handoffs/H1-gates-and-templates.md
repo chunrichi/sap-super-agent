@@ -4,6 +4,8 @@
 > 目标：让"人工确认"成为一等公民；支持默认 3 阶段与 PDO 6 阶段模板；工件版本可追溯；AI 产出有可判定的完成条件。
 > 规格来源：[docs/003](../docs/003-domain-and-protocol.md) §2.2/2.4/2.5/2.7、[docs/005](../docs/005-clients-and-ai.md) §3/§4、[docs/007](../docs/007-roadmap.md) S1、[docs/009](../docs/009-testing.md)。
 
+> **交接状态（2026-11-05）**：H0 已完成（`feat/h0-walking-skeleton` @ `d03dc29`，已推送，验收全绿）。执行前先读 [H1-H2-execution-handoff.md](H1-H2-execution-handoff.md)：H0 可复用接口、实施顺序、并行协调、环境坑与启动 Prompt。
+
 ## 1. 交付物
 
 ### 1.1 模板系统

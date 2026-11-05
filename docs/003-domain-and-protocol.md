@@ -64,6 +64,7 @@ stateDiagram-v2
 
 - 一个 Demand 的一个 Stage 只有一个 StageRun；重试/退回都在同一 StageRun 上增加 `attempt`，旧 attempt 的事件与工件保留。
 - 阶段完成必须产出声明的输出工件，且通过 **schema 校验 + 模板 checklist**（引用完整性、必填项覆盖、上游版本一致）；只过 schema 不算完成。
+- 每次 `server-ai` 执行都记一条 run ledger（模型、prompt 版本、输入工件版本、token、成本、耗时、失败原因），落在 `stage_attempts`，供成本统计与复现（实现补充）。
 - 上游工件产生新版本时，下游已生成工件标记 `stale` 并阻断继续推进，直到重新生成或人工确认。
 - 门禁由模板声明（`gate: none | human-approve`）。没有门禁的阶段全自动。
 
@@ -121,6 +122,7 @@ Assignment 状态：`active → completed | released | expired`。
 | `capabilities` | `coding`、`doc-review`、`test-run` 等；与任务要求匹配 |
 | `roles` | 允许领取的角色（后端、ABAP、测试……） |
 | `workspaces` | `{workspaceKey, repo, projectKey, baseBranch, localPathHint?}` 列表；`workspaceKey = sha256(规范化后的工作区 URI)`，只属于执行器（当前打开的目录），任务侧只带 repo/projectKey |
+| `activeWorkspaceKey` | 当前**打开**的工作区 key（必须属于 `workspaces`）；由心跳更新；为 `null` 或不属于列表即视为不可派单。实现补充：该字段原在 §3 规则中出现但 §2.6 未定义 |
 | `machineIdHash` | `sha256(vscode.env.machineId)`；只存哈希，用于"同目录重复打开"与审计 |
 | `presence` | `online / busy / away / offline`，由 WS 连接、心跳与显式状态计算 |
 | `accepting` | 布尔；`false` 表示用户暂停接单（仍在线）。`server-ai` 恒为 online 且 accepting=true（全局 paused 除外） |
@@ -156,7 +158,7 @@ Assignment 状态：`active → completed | released | expired`。
 
 派发事件：
 
-- 执行器上线 / 工作区绑定变化 → 服务端重算可领取列表并推送 `task.offered`。
+- 执行器注册 / 心跳 → 服务端重算可领取列表，在心跳响应里返回 `offers`；任务新建或回池时再向已连接客户端推送 `task.offered` 提示帧（H0 广播给所有连接，按执行器过滤在 S3 增强）。
 - 任务新增 → 推送给所有满足 1–5 的在线执行器（只含摘要，不含工件内容）。
 - 租约过期 → 写 `assignment.expired` 事件，任务回池并推送给其他候选。
 
@@ -176,7 +178,7 @@ Assignment 状态：`active → completed | released | expired`。
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | POST | `/executors/register` | 注册并换取 executor token；声明 kind/user/machineIdHash/capabilities/roles/workspaces/protocolVersion/cliVersion |
-| POST | `/executors/{id}/heartbeat` | 每 20s：`{status, load, workspaces?}` → `{serverTime, leaseTtlMs, offers}`；服务端 TTL 60s |
+| POST | `/executors/{id}/heartbeat` | 每 20s：`{status, load, workspaces?, activeWorkspaceKey?}` → `{serverTime, leaseTtlMs, renewIntervalMs, offers}`；服务端 TTL 60s |
 | DELETE | `/executors/{id}` | 优雅下线；立即回收其活跃任务 |
 | GET | `/tasks` | 查询可领取任务（已按资格过滤）；`?state=pending&limit=20` |
 | GET | `/tasks/{id}` | 任务详情 + 门禁/工件摘要 |
@@ -206,13 +208,13 @@ Assignment 状态：`active → completed | released | expired`。
 
 ### 4.4 WebSocket 事件流
 
-连接：`wss://<host>/api/v1/events?after=<lastSeq>`，token 同 REST。断线重连携带 `lastSeq` 补齐；事件日志保留 ≥7 天（M1 可配 24h），游标超出保留窗口时返回 `resync_required`，客户端全量拉取。WS 不可用时降级到 `GET /events/stream`（SSE，只读）。
+连接：`wss://<host>/api/v1/events?after=<lastSeq>`，token 同 REST。断线重连携带 `lastSeq` 补齐；事件日志保留 ≥7 天（M1 可配 24h），游标超出保留窗口时 REST 返回 `resync_required`，WS 收到控制帧 `{"type":"resync_required","lastSeq","earliestSeq"}`，客户端全量拉取。WS 不可用时降级到 `GET /events/stream`（SSE，只读）。
 
 统一 envelope：
 
 ```json
-{ "seq": 12043, "id": "01J...", "type": "task.offered", "at": "2026-11-04T12:00:00Z",
-  "subject": { "type": "task", "id": "01J..." }, "data": { } }
+{ "seq": 12043, "id": "01J...", "type": "task.updated", "at": "2026-11-04T12:00:00Z",
+  "subject": { "type": "task", "id": "01J..." }, "data": { "state": "in_progress" } }
 ```
 
 | 方向 | type | 触发 |
@@ -223,6 +225,8 @@ Assignment 状态：`active → completed | released | expired`。
 | 客户端→服务端 | `client.pong` / `client.ack {seq}` | 保活与游标确认 |
 
 只推送**摘要**；工件内容与上下文包走 REST 按需拉取，避免大消息与重复传输。
+
+`task.offered` 是**传输帧而非事件**（§2.3：不持久化）：`{type:"task.offered", at, subject:{type:"task",id}, task:{id,demandId,title,executorKind,requiredRoles,workspaceBinding,priority,dueAt}}`，不带 `seq`；任务新建或回池（租约过期、主动 release、执行器下线释放）时推送，客户端据此刷新可领取列表，权威状态仍以 REST/事件日志为准。H0 实现广播给所有已连接客户端（只含摘要）；按执行器资格过滤在 S3 增强。`task.updated`/`task.cancelled` 走统一事件 envelope。
 
 ### 4.5 SAP 入站 webhook
 
@@ -252,8 +256,8 @@ Assignment 状态：`active → completed | released | expired`。
 
 ## 5. 工件与上下文
 
-- **存储可插拔**：本地文件（M1）、S3/对象存储（M2）、SAP 附件/内容仓库（M3）。控制平面只存元数据、checksum 与引用。
-- **上下文包**是工件的只读快照，不是新概念：由需求摘要、输入工件、验收标准、工作区绑定和禁止项组成，扩展负责写入 `.sap-superagent/context/<taskId>.md`，供 Copilot Chat 引用。
+- **存储可插拔**：本地文件（M1）、S3/对象存储（M2）、SAP 附件/内容仓库（M3）。控制平面只存元数据、checksum 与引用。M1 实现补充：本地模式把内容写到 `SA_STATE_DIR/artifacts/<artifactId>/v<n>.bin`，接口只接受 `contentBase64`（`contentUrl` 预留给 M2 对象存储）；checksum 必须等于解码后字节的 sha256。
+- **上下文包**是工件的只读快照，不是新概念：由需求摘要、输入工件、验收标准、工作区绑定和禁止项组成，扩展负责写入 `.sap-superagent/task/<taskId>/context.md`（同目录附 `context.json` 快照），供 Copilot Chat 用 `#file` 引用。
 - **审计**：工件每次创建/审批写事件；事件只追加，不更新。
 
 ## 6. 扩展点

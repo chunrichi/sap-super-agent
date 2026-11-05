@@ -1,0 +1,28 @@
+{
+  "task": {
+    "id": "01J8ZQ9W3K5M2V7X4C6B8N0P1Q",
+    "demandId": "4a3f9c2e7b1d48f0a6c5e2d9b8f7a1c3",
+    "stageRunId": "01J8ZQ9W3K5M2V7X4C6B8N0P1R",
+    "title": "实现需求 R-2041 的取数逻辑",
+    "executorKind": "vscode",
+    "requiredRoles": [
+      "developer"
+    ],
+    "workspaceBinding": {
+      "repo": "z-sales",
+      "baseBranch": "main"
+    },
+    "priority": "normal",
+    "dueAt": null,
+    "state": "claimed",
+    "lastHolderUserIds": [],
+    "createdAt": "2026-11-04T12:00:00.000Z",
+    "updatedAt": "2026-11-04T12:00:00.000Z"
+  },
+  "lease": {
+    "expiresAt": "2026-11-04T12:01:00.000Z",
+    "renewIntervalMs": 20000
+  },
+  "contextUrl": "/api/v1/tasks/01J8ZQ9W3K5M2V7X4C6B8N0P1Q/context",
+  "serverTime": "2026-11-04T12:00:00.000Z"
+}

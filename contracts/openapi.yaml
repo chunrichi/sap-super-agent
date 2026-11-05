@@ -1,0 +1,363 @@
+openapi: 3.1.0
+info:
+  title: SAP Super Agent Control Plane
+  version: 0.0.0
+  description: |
+    S0 (walking skeleton) HTTP surface of the control plane. Machine-readable
+    entity schemas live in `contracts/json-schema/` and are generated from
+    `@sap-superagent/protocol`; the narrative contract is docs/003.
+servers:
+  - url: http://127.0.0.1:3080/api/v1
+    description: M1 local mode (CLI `sap-superagent dev`)
+security:
+  - bearerAuth: []
+tags:
+  - name: ops
+  - name: executors
+  - name: tasks
+  - name: demands
+  - name: events
+  - name: admin
+paths:
+  /healthz:
+    get:
+      tags: [ops]
+      summary: Liveness + local-mode metadata
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/health-response.json
+  /executors/register:
+    post:
+      tags: [executors]
+      summary: Register a VSCode executor and exchange a user token for an executor token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./json-schema/register-executor-body.json
+      responses:
+        '200':
+          description: Registered executor + executor token
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/register-executor-response.json
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /executors/{id}:
+    delete:
+      tags: [executors]
+      summary: Gracefully unregister an executor and release its active tasks
+      parameters:
+        - $ref: '#/components/parameters/ExecutorId'
+      responses:
+        '200':
+          description: Released task ids
+        '404': { $ref: '#/components/responses/NotFound' }
+  /executors/{id}/heartbeat:
+    post:
+      tags: [executors]
+      summary: Presence heartbeat (every 20s; server TTL 60s) with offered tasks
+      parameters:
+        - $ref: '#/components/parameters/ExecutorId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, load]
+              properties:
+                status: { type: string, enum: [online, busy, away] }
+                load: { type: integer, minimum: 0 }
+                workspaces:
+                  type: array
+                  items: { type: object }
+                activeWorkspaceKey: { type: [string, 'null'] }
+      responses:
+        '200':
+          description: Server time, lease settings and offered task summaries
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/heartbeat-response.json
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /tasks:
+    get:
+      tags: [tasks]
+      summary: Claimable tasks already filtered by executor eligibility
+      parameters:
+        - name: state
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Task list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tasks, serverTime]
+                properties:
+                  tasks:
+                    type: array
+                    items: { $ref: ./json-schema/task.json }
+                  serverTime: { type: string, format: date-time }
+  /tasks/{id}:
+    get:
+      tags: [tasks]
+      summary: Task detail with demand summary and artifact list
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Task detail
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/task-detail-response.json
+        '404': { $ref: '#/components/responses/NotFound' }
+  /tasks/{id}/context:
+    get:
+      tags: [tasks]
+      summary: Context pack for the executor (markdown + JSON)
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Context pack
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/task-context.json
+  /tasks/{id}/claim:
+    post:
+      tags: [tasks]
+      summary: Atomically claim a pending task (CAS; 409 if already held)
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Task + lease
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/claim-task-response.json
+        '409':
+          description: Task not claimable by this executor
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /tasks/{id}/lease/renew:
+    post:
+      tags: [tasks]
+      summary: Renew the lease (409 `lease_expired` means stop executing)
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: New lease
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/lease.json
+        '409':
+          description: Lease expired or not held by this executor
+  /tasks/{id}/progress:
+    post:
+      tags: [tasks]
+      summary: Report progress (event only, never blocks)
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                percent: { type: integer, minimum: 0, maximum: 100 }
+                message: { type: string }
+      responses:
+        '200': { description: Progress recorded }
+  /tasks/{id}/artifacts:
+    post:
+      tags: [tasks]
+      summary: Submit an immutable artifact version (checksum verified server-side)
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, contentType, checksum]
+              properties:
+                kind: { type: string }
+                contentType: { type: string }
+                contentBase64: { type: string }
+                contentUrl: { type: string, format: uri }
+                checksum: { type: string, pattern: '^sha256:[a-f0-9]{64}$' }
+                summary: { type: string }
+                title: { type: string }
+      responses:
+        '200':
+          description: Created artifact version
+          content:
+            application/json:
+              schema:
+                type: object
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: Lease expired or content/checksum mismatch
+  /tasks/{id}/complete:
+    post:
+      tags: [tasks]
+      summary: Complete the task with summary + artifact ids
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Task completed
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/task.json
+        '409':
+          description: Lease expired or invalid state
+  /tasks/{id}/fail:
+    post:
+      tags: [tasks]
+      summary: Mark the task failed
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200': { description: Task failed }
+  /tasks/{id}/release:
+    post:
+      tags: [tasks]
+      summary: Give the lease back; the task returns to the pool
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200': { description: Task released }
+  /demands:
+    post:
+      tags: [demands]
+      summary: Create a demand in local mode (SAP webhook creates demands in S2)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./json-schema/create-demand-body.json
+      responses:
+        '200':
+          description: Demand + materialized stage runs
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/create-demand-response.json
+        '400': { $ref: '#/components/responses/BadRequest' }
+    get:
+      tags: [demands]
+      summary: List/search demands
+      responses:
+        '200': { description: Demand list }
+  /demands/{id}:
+    get:
+      tags: [demands]
+      summary: Demand detail (stages, artifacts, versions, approvals, event timeline)
+      parameters:
+        - $ref: '#/components/parameters/DemandId'
+      responses:
+        '200':
+          description: Demand detail
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/demand-detail-response.json
+        '404': { $ref: '#/components/responses/NotFound' }
+  /demands/{id}/cancel:
+    post:
+      tags: [demands]
+      summary: Cancel a demand and its open tasks
+      parameters:
+        - $ref: '#/components/parameters/DemandId'
+      responses:
+        '200': { description: Cancelled demand }
+  /events:
+    get:
+      tags: [events]
+      summary: Incremental event replay; 409 `resync_required` when the cursor left the retention window
+      parameters:
+        - name: after
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+      responses:
+        '200':
+          description: Event page
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/events-response.json
+        '409':
+          description: Cursor outside retention window (`resync_required`)
+  /admin/tasks:
+    post:
+      tags: [admin]
+      summary: Create a dev task by hand (S0 verification only; H1 generates tasks from templates)
+      responses:
+        '200':
+          description: Created task
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/task.json
+        '403': { $ref: '#/components/responses/Unauthorized' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    TaskId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    ExecutorId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    DemandId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: { type: string }
+  responses:
+    BadRequest:
+      description: Invalid request body/query
+    Unauthorized:
+      description: Missing/expired token
+    NotFound:
+      description: Entity not found

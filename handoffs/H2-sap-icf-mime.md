@@ -4,6 +4,8 @@
 > 目标：SAP 内有一个可用的需求系统（列表/详情/审批），提交后 5 分钟内进入控制平面；审批结果 1 分钟内回写 SAP；未绑定仓库的需求正常进入通用任务箱。
 > 规格来源：[docs/004](../docs/004-sap.md)、[docs/003](../docs/003-domain-and-protocol.md) §4.5、[docs/008](../docs/008-hooks.md)、[docs/009](../docs/009-testing.md)。
 
+> **交接状态（2026-11-05）**：H0 已完成（`feat/h0-walking-skeleton` @ `d03dc29`，已推送，验收全绿）。执行前先读 [H1-H2-execution-handoff.md](H1-H2-execution-handoff.md)：H0 可复用接口、Phase A/B 顺序、并行协调、SAP 环境坑与启动 Prompt。
+
 ## 1. 交付物
 
 ### 1.1 SAP 对象（`sap/`，abapGit 可导入）

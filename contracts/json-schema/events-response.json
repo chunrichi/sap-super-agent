@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "demand.created",
+              "demand.updated",
+              "demand.cancelled",
+              "stage.ready",
+              "stage.started",
+              "stage.done",
+              "stage.failed",
+              "stage.waiting_human",
+              "stage.cancelled",
+              "task.created",
+              "task.offered",
+              "task.claimed",
+              "task.updated",
+              "task.progress",
+              "task.completed",
+              "task.failed",
+              "task.released",
+              "task.cancelled",
+              "assignment.created",
+              "assignment.completed",
+              "assignment.released",
+              "assignment.expired",
+              "artifact.created",
+              "artifact.approved",
+              "artifact.rejected",
+              "approval.requested",
+              "approval.decided",
+              "executor.registered",
+              "executor.offline"
+            ]
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "subject": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "demand",
+                  "stage_run",
+                  "task",
+                  "assignment",
+                  "artifact",
+                  "approval",
+                  "executor",
+                  "system"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "type",
+              "id"
+            ],
+            "additionalProperties": false
+          },
+          "data": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "seq",
+          "id",
+          "type",
+          "at",
+          "subject",
+          "data"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "lastSeq": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "earliestSeq": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    }
+  },
+  "required": [
+    "events",
+    "lastSeq",
+    "earliestSeq"
+  ],
+  "additionalProperties": false
+}

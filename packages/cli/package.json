@@ -1,0 +1,30 @@
+{
+  "name": "@sap-superagent/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "M1 entrypoint: init / dev / token / doctor.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "sap-superagent": "./dist/cli.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "dev": "tsx src/cli.ts dev",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json",
+    "check": "pnpm run typecheck && pnpm run test"
+  },
+  "dependencies": {
+    "@sap-superagent/server": "workspace:*",
+    "commander": "^15.0.0"
+  }
+}

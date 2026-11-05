@@ -1,0 +1,23 @@
+{
+  "name": "@sap-superagent/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure domain logic: state machines, scheduling rules, template loader, context pack.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json",
+    "check": "pnpm run typecheck && pnpm run test"
+  },
+  "dependencies": {"@sap-superagent/protocol":"workspace:*","yaml":"^2.9.1"}
+}

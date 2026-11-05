@@ -1,0 +1,14 @@
+{
+  "seq": 12043,
+  "id": "01J8ZQ9W3K5M2V7X4C6B8N0P1Q",
+  "type": "task.offered",
+  "at": "2026-11-04T12:00:00.000Z",
+  "subject": {
+    "type": "task",
+    "id": "01J8ZQ9W3K5M2V7X4C6B8N0P1R"
+  },
+  "data": {
+    "demandId": "4a3f9c2e7b1d48f0a6c5e2d9b8f7a1c3",
+    "priority": "normal"
+  }
+}

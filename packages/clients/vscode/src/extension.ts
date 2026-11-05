@@ -7,7 +7,6 @@ import * as vscode from 'vscode';
 import { ARTIFACT_KINDS } from '@sap-superagent/protocol';
 import type {
   Approval,
-  ArtifactKind,
   Notification,
   SubmitArtifactBody,
   Task,
@@ -15,14 +14,17 @@ import type {
 import { ControlPlaneClient, ControlPlaneError, type TaskContextResponse } from './client.js';
 import { EventStreamClient, type SocketLike } from './events.js';
 import { ExecutorRuntime, type ExecutorState } from './executor.js';
+import { artifactKindLabel, roleLabel } from './labels.js';
 import { evaluatePreflight } from './preflight.js';
 import { ConnectionStatusBar } from './statusBar.js';
 import {
   APPROVAL_ACTION_COMMAND,
+  CONNECTED_CONTEXT_KEY,
   INBOX_VIEW_ID,
   READ_NOTIFICATION_COMMAND,
   TaskInboxProvider,
   describeTask,
+  shortDemandId,
   type InboxData,
   type WaitingItem,
 } from './tasksView.js';
@@ -75,6 +77,8 @@ let socketFactory: ((url: string) => SocketLike) | undefined;
 let availableTasks: Task[] = [];
 let waitingApprovals: Approval[] = [];
 let unreadNotifications: Notification[] = [];
+let pendingApprovalCount = 0;
+let connectedContext: boolean | undefined;
 let lastExecutorState: ExecutorState | undefined;
 let lastWorkspaceFolder: string | null | undefined;
 let refreshInFlight: Promise<void> | null = null;
@@ -116,15 +120,35 @@ async function resolveToken(context: vscode.ExtensionContext): Promise<string | 
   return stored === undefined || stored.trim() === '' ? undefined : stored;
 }
 
+/**
+ * Keep the `sapSuperAgent.connected` context key in sync with the executor.
+ * The key drives `viewsWelcome` (package.json) and is set only on transitions
+ * to avoid spamming the command bus on every heartbeat.
+ */
+function syncConnectedContext(connection: ExecutorState['connection']): void {
+  const connected = connection === 'online' || connection === 'paused';
+  if (connectedContext === connected) {
+    return;
+  }
+  connectedContext = connected;
+  // While disconnected the tree root is empty so the welcome page (not three
+  // dead groups) is what the developer sees.
+  inbox?.setConnected(connected);
+  void vscode.commands.executeCommand('setContext', CONNECTED_CONTEXT_KEY, connected);
+}
+
 function updateStatusBar(state?: ExecutorState): void {
+  const effective = state ?? lastExecutorState;
+  const connection = effective?.connection ?? 'offline';
+  syncConnectedContext(connection);
   if (statusBar === undefined) {
     return;
   }
-  const effective = state ?? lastExecutorState;
   statusBar.update({
-    connection: effective?.connection ?? 'offline',
+    connection,
     accepting: effective?.accepting ?? isAccepting(),
     pendingCount: effective?.pendingCount ?? availableTasks.length + claimedTasks.size,
+    pendingApprovalCount,
   });
 }
 
@@ -231,6 +255,7 @@ async function doRefreshInbox(): Promise<void> {
     mine: [...claimedTasks.values()],
     waiting: buildWaitingItems(),
   };
+  pendingApprovalCount = data.waiting.filter((item) => item.kind === 'approval').length;
   inbox.refresh(data);
   const pendingCount = data.available.length + data.mine.length + data.waiting.length;
   runtime?.setPendingCount(pendingCount);
@@ -277,7 +302,7 @@ async function releaseClaimedTasks(reason: string): Promise<number> {
   }
   if (released.length > 0) {
     void vscode.window.showInformationMessage(
-      `已释放 ${released.length} 个任务（${reason}），它们已回到可领取池。`,
+      `已释放 ${released.length} 个任务（${reason}），它们已回到“可领取”；任务箱已刷新。`,
     );
   }
   return released.length;
@@ -472,7 +497,7 @@ async function commandConnect(context: vscode.ExtensionContext): Promise<void> {
   authWarningShown = false;
   await startExecutor(context);
   if (lastExecutorState?.connection === 'online') {
-    void vscode.window.showInformationMessage('已连接控制平面。');
+    void vscode.window.showInformationMessage('已连接控制平面；任务箱已刷新。');
   }
 }
 
@@ -541,15 +566,19 @@ async function commandClaimTask(context: vscode.ExtensionContext, arg?: unknown)
     syncRuntimeActiveTasks();
     await persistClaimedTasks(context);
     await refreshInbox();
-    void vscode.window.showInformationMessage(`已领取：${response.task.title}`);
+    void vscode.window.showInformationMessage(
+      `已领取任务「${response.task.title}」，正在打开上下文包…`,
+    );
     await commandOpenTask(context, response.task);
   } catch (error) {
     if (error instanceof ControlPlaneError && error.status === 409) {
-      void vscode.window.showWarningMessage('任务已被其他人领取或状态已变化，正在刷新任务箱。');
+      void vscode.window.showWarningMessage(
+        `任务「${task.title}」已被其他人领取或状态已变化；已刷新任务箱，请从「可领取」重试。`,
+      );
       await refreshInbox();
       return;
     }
-    throw error;
+    showActionableError(error, '领取任务失败，请检查控制平面连接后重试');
   }
 }
 
@@ -567,11 +596,8 @@ async function commandOpenTask(context: vscode.ExtensionContext, arg?: unknown):
   try {
     response = await activeClient.getContext(task.id);
   } catch (error) {
-    if (error instanceof ControlPlaneError) {
-      void vscode.window.showWarningMessage(`读取任务上下文失败：${error.message}`);
-      return;
-    }
-    throw error;
+    showActionableError(error, '读取任务上下文失败，请确认仍持有该任务后重试「打开任务」');
+    return;
   }
 
   if (folder !== undefined) {
@@ -598,7 +624,11 @@ async function commandSubmitArtifact(context: vscode.ExtensionContext, arg?: unk
     return;
   }
   const kindItem = await vscode.window.showQuickPick(
-    ARTIFACT_KINDS.map((kind) => ({ label: kind })),
+    ARTIFACT_KINDS.map((kind) => ({
+      label: artifactKindLabel(kind),
+      description: kind,
+      artifactKind: kind,
+    })),
     { placeHolder: '工件类型' },
   );
   if (kindItem === undefined) {
@@ -619,7 +649,7 @@ async function commandSubmitArtifact(context: vscode.ExtensionContext, arg?: unk
       ? `# ${task.title}\n\n${summary.trim()}\n`
       : editor.document.getText();
   const body: SubmitArtifactBody = {
-    kind: kindItem.label as ArtifactKind,
+    kind: kindItem.artifactKind,
     contentType: editor === undefined ? 'text/markdown' : editor.document.languageId,
     contentBase64: Buffer.from(content, 'utf8').toString('base64'),
     checksum: `sha256:${createHash('sha256').update(content, 'utf8').digest('hex')}`,
@@ -630,7 +660,7 @@ async function commandSubmitArtifact(context: vscode.ExtensionContext, arg?: unk
   try {
     const response = await activeClient.submitArtifact(task.id, body);
     void vscode.window.showInformationMessage(
-      `工件已提交：${response.artifact.kind} v${response.version.version}`,
+      `工件已提交：${artifactKindLabel(response.artifact.kind)} v${response.version.version}；下一步可完成任务。`,
     );
     const action = await vscode.window.showInformationMessage('工件已提交。要现在完成任务吗？', '完成任务', '稍后');
     if (action === '完成任务') {
@@ -644,14 +674,12 @@ async function commandSubmitArtifact(context: vscode.ExtensionContext, arg?: unk
       syncRuntimeActiveTasks();
       await persistClaimedTasks(context);
       await refreshInbox();
-      void vscode.window.showInformationMessage(`任务已完成：${completed.task.title}`);
+      void vscode.window.showInformationMessage(
+        `任务已完成：${completed.task.title}。可以继续领取下一个任务。`,
+      );
     }
   } catch (error) {
-    if (error instanceof ControlPlaneError) {
-      void vscode.window.showWarningMessage(`提交工件失败：${error.message}`);
-      return;
-    }
-    throw error;
+    showActionableError(error, '提交工件失败，任务仍保持已领取，可修正后重试「提交工件」');
   }
 }
 
@@ -666,7 +694,11 @@ async function commandApprovalAction(arg?: unknown): Promise<void> {
       { label: '通过', description: 'approve', decision: 'approve' as const },
       { label: '驳回', description: 'reject', decision: 'reject' as const },
     ],
-    { placeHolder: `审批 ${approval.gateKey}（需求 ${approval.demandId}）` },
+    {
+      placeHolder: `审批 ${approval.gateKey} · ${roleLabel(approval.requiredRole)}（需求 ${shortDemandId(
+        approval.demandId,
+      )}）`,
+    },
   );
   if (choice === undefined) {
     return;
@@ -684,14 +716,18 @@ async function commandApprovalAction(arg?: unknown): Promise<void> {
       ...(comment.trim() === '' ? {} : { comment: comment.trim() }),
     });
     await refreshInbox();
-    void vscode.window.showInformationMessage(`审批已提交：${approval.gateKey} ${choice.label}。`);
+    void vscode.window.showInformationMessage(
+      `审批已提交：${approval.gateKey} ${choice.label}；该条目已从「等待我回答」移除。`,
+    );
   } catch (error) {
     if (error instanceof ControlPlaneError && error.status === 409) {
-      void vscode.window.showWarningMessage('该审批已被其他人处理，正在刷新任务箱。');
+      void vscode.window.showWarningMessage(
+        '该审批已被其他人处理；已刷新任务箱，请查看最新待办。',
+      );
       await refreshInbox();
       return;
     }
-    showActionableError(error, '提交审批失败');
+    showActionableError(error, '提交审批失败，请稍后重试或让需求顾问在 SAP 内处理');
   }
 }
 
@@ -709,7 +745,7 @@ async function commandReadNotification(arg?: unknown): Promise<void> {
       await refreshInbox();
       return;
     }
-    showActionableError(error, '标记通知已读失败');
+    showActionableError(error, '标记通知已读失败，已保持未读，可稍后重试');
   }
 }
 
@@ -718,13 +754,19 @@ async function commandToggleAccepting(context: vscode.ExtensionContext): Promise
   await configuration().update('accepting', next, vscode.ConfigurationTarget.Global);
   runtime?.setAccepting(next);
   updateStatusBar();
-  void vscode.window.showInformationMessage(next ? '已恢复接单。' : '已暂停接单（仍在线，不会领取新任务）。');
+  void vscode.window.showInformationMessage(
+    next
+      ? '已恢复接单；新的可领取任务会实时出现。'
+      : '已暂停接单（仍在线，租约继续续期）；点击状态栏可恢复。',
+  );
   void context.workspaceState.update('sapSuperAgent.accepting', next);
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   extensionContext = context;
-  inbox = new TaskInboxProvider();
+  // Start disconnected so the tree shows the `viewsWelcome` connect action; the
+  // first online state flips this and reveals the three groups + placeholders.
+  inbox = new TaskInboxProvider(false);
   const treeView = vscode.window.createTreeView(INBOX_VIEW_ID, {
     treeDataProvider: inbox,
     showCollapseAll: true,
@@ -808,6 +850,8 @@ export async function deactivate(): Promise<void> {
   availableTasks = [];
   waitingApprovals = [];
   unreadNotifications = [];
+  pendingApprovalCount = 0;
+  connectedContext = undefined;
   lastWorkspaceFolder = undefined;
   lastExecutorState = undefined;
   authWarningShown = false;

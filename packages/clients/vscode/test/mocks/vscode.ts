@@ -53,6 +53,7 @@ export class TreeItem {
   contextValue: string | undefined;
   iconPath: unknown;
   command: unknown;
+  accessibilityInformation: { label: string; role?: string } | undefined;
 
   constructor(label?: string, collapsibleState?: number) {
     this.label = label;
@@ -166,6 +167,7 @@ export interface MockStatusBarItem extends Disposable {
   tooltip: string | undefined;
   command: string | undefined;
   name: string | undefined;
+  accessibilityInformation: { label: string; role?: string } | undefined;
   visible: boolean;
   show(): void;
   hide(): void;
@@ -186,6 +188,7 @@ function createStatusBarItem(alignment: number, priority: number): MockStatusBar
     tooltip: undefined,
     command: undefined,
     name: undefined,
+    accessibilityInformation: undefined,
     visible: false,
     show() {
       item.visible = true;

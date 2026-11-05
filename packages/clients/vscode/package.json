@@ -49,6 +49,18 @@
         { "id": "sapSuperAgent.inbox", "name": "任务箱" }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "sapSuperAgent.inbox",
+        "contents": "尚未连接控制平面。\n[连接控制平面](command:sapSuperAgent.connect)",
+        "when": "!sapSuperAgent.connected"
+      },
+      {
+        "view": "sapSuperAgent.inbox",
+        "contents": "已连接控制平面，暂无待办。\n[领取任务](command:sapSuperAgent.claimTask)\n新的任务或门禁到达时会自动刷新。",
+        "when": "sapSuperAgent.connected"
+      }
+    ],
     "configuration": {
       "title": "SAP Super Agent",
       "properties": {

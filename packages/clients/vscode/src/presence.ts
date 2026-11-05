@@ -18,6 +18,8 @@ export interface PresenceSnapshot {
   accepting: boolean;
   /** Offered + locally claimed tasks the developer still has to look at. */
   pendingCount: number;
+  /** Pending gates inside `pendingCount`; surfaced in the tooltip only. */
+  pendingApprovalCount?: number;
 }
 
 export interface StatusBarPresentation {
@@ -27,6 +29,8 @@ export interface StatusBarPresentation {
   tooltip: string;
   /** Command executed on click. */
   command: string;
+  /** Plain-language label for screen readers (codicon tokens stripped). */
+  accessibilityLabel: string;
 }
 
 export const TOGGLE_ACCEPTING_COMMAND = 'sapSuperAgent.toggleAccepting';
@@ -40,17 +44,30 @@ function withCount(label: string, pendingCount: number): string {
   return pendingCount > 0 ? `${label} ${pendingCount}` : label;
 }
 
+/** Tooltip suffix for pending gates, e.g. `（其中 2 个待审批门禁）`. */
+function approvalSuffix(pendingApprovalCount: number | undefined): string {
+  return pendingApprovalCount !== undefined && pendingApprovalCount > 0
+    ? `（其中 ${pendingApprovalCount} 个待审批门禁）`
+    : '';
+}
+
+function accessibilityLabel(label: string, pendingCount: number, extra = ''): string {
+  return pendingCount > 0 ? `${label}，${pendingCount} 个待办${extra}` : label;
+}
+
 /**
  * Status-bar text/tooltip from the current connection + accepting + unread
  * state (docs/005 §2.2: 状态栏 = 连接状态 + 未读待办数，点击切换暂停接单).
  */
 export function computeStatusBar(snapshot: PresenceSnapshot): StatusBarPresentation {
-  const { connection, accepting, pendingCount } = snapshot;
+  const { connection, accepting, pendingCount, pendingApprovalCount } = snapshot;
+  const gates = approvalSuffix(pendingApprovalCount);
   if (connection === 'paused' || (connection === 'online' && !accepting)) {
     return {
       text: `${ICON_PAUSED} ${withCount('已暂停', pendingCount)}`,
-      tooltip: '已暂停接单：不会领取新任务，租约仍会续期。点击恢复接单。',
+      tooltip: `已暂停接单：不会领取新任务，租约仍会续期${gates}。点击恢复接单。`,
       command: TOGGLE_ACCEPTING_COMMAND,
+      accessibilityLabel: accessibilityLabel('已暂停接单', pendingCount, gates),
     };
   }
   switch (connection) {
@@ -59,15 +76,17 @@ export function computeStatusBar(snapshot: PresenceSnapshot): StatusBarPresentat
         text: `${ICON_ONLINE} ${withCount('在线', pendingCount)}`,
         tooltip:
           pendingCount > 0
-            ? `已连接控制平面，有 ${pendingCount} 个待办。点击暂停接单。`
+            ? `已连接控制平面，有 ${pendingCount} 个待办${gates}。点击暂停接单。`
             : '已连接控制平面，正在等待任务。点击暂停接单。',
         command: TOGGLE_ACCEPTING_COMMAND,
+        accessibilityLabel: accessibilityLabel('已连接控制平面', pendingCount, gates),
       };
     case 'connecting':
       return {
         text: `${ICON_CONNECTING} 连接中`,
         tooltip: '正在连接控制平面…',
         command: TOGGLE_ACCEPTING_COMMAND,
+        accessibilityLabel: '正在连接控制平面',
       };
     case 'offline':
     default:
@@ -75,6 +94,7 @@ export function computeStatusBar(snapshot: PresenceSnapshot): StatusBarPresentat
         text: `${ICON_OFFLINE} 离线`,
         tooltip: '未连接控制平面。点击暂停/恢复不会生效；请运行 “SAP Super Agent: 连接控制平面”。',
         command: TOGGLE_ACCEPTING_COMMAND,
+        accessibilityLabel: '离线，尚未连接控制平面',
       };
   }
 }

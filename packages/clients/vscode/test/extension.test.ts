@@ -169,6 +169,15 @@ describe('extension activation', () => {
     ]);
     expect(mockState.treeViews).toHaveLength(1);
     expect(mockState.statusBarItems[0]?.text).toContain('在线');
+    // Context key drives `viewsWelcome` / menus and flips true once online.
+    expect(mockState.executedCommands).toContainEqual({
+      command: 'setContext',
+      args: ['sapSuperAgent.connected', true],
+    });
+    // Connected but idle -> the welcome page (not three empty groups).
+    const onlineProvider = mockState.treeViews[0]?.treeDataProvider as TaskInboxProvider;
+    expect(onlineProvider.connected).toBe(true);
+    expect(onlineProvider.getChildren()).toEqual([]);
     // Register with the user token, then heartbeat with the exchanged token.
     expect(calls).toContain('POST /api/v1/executors/register');
     expect(calls.some((call) => call.endsWith('/heartbeat'))).toBe(true);
@@ -184,6 +193,14 @@ describe('extension activation', () => {
 
     expect(mockState.statusBarItems[0]?.text).toContain('离线');
     expect(calls).toEqual([]);
+    // Disconnected + empty tree = the `viewsWelcome` connect page.
+    expect(mockState.executedCommands).toContainEqual({
+      command: 'setContext',
+      args: ['sapSuperAgent.connected', false],
+    });
+    const provider = mockState.treeViews[0]?.treeDataProvider as TaskInboxProvider;
+    expect(provider.connected).toBe(false);
+    expect(provider.getChildren()).toEqual([]);
   });
 
   it('toggles accepting from the status bar command', async () => {
@@ -340,10 +357,12 @@ describe('等待我回答 group + realtime updates (S3)', () => {
     expect(groups[2]).toMatchObject({ kind: 'group', group: 'waiting', count: 2 });
     const waiting = provider.getChildren(groups[2]!);
     expect(waiting.map((node) => (node.kind === 'waiting' ? node.label : 'group'))).toEqual([
-      '审批 G1 · consultant',
+      '审批 G1 · 需求顾问',
       '阶段等待人工确认',
     ]);
     expect(mockState.statusBarItems[0]?.text).toContain('在线 2');
+    expect(mockState.statusBarItems[0]?.tooltip).toContain('1 个待审批门禁');
+    expect(mockState.statusBarItems[0]?.accessibilityInformation?.label).toContain('2 个待办');
   });
 
   it('decides a gate from the inbox and refreshes the group', async () => {

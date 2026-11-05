@@ -3,6 +3,8 @@ import type { FastifyInstance } from 'fastify';
 import type { ModelProvider } from '@sap-superagent/ai';
 import type { TemplateRegistry } from './templates.js';
 import type { EventSocketHub } from './ws/event-socket.js';
+// --- H2: SAP ICF integration (docs/004 §3) ---
+import type { SapIntegrationConfig } from './hooks/sap-config.js';
 
 /** Options accepted by `startServer` (all optional except `stateDir`). */
 export interface ServerOptions {
@@ -66,4 +68,10 @@ export interface ServerContext {
   readonly hub: EventSocketHub;
   readonly startedAtMs: number;
   readonly clock: () => number;
+  /**
+   * H2: resolved SAP ICF integration config (docs/004 §3). Absent when
+   * `startServer` was not given any SA_SAP_* configuration; every H2 surface
+   * treats a missing value as "SAP integration disabled".
+   */
+  readonly sap?: SapIntegrationConfig;
 }

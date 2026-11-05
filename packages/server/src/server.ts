@@ -10,6 +10,9 @@ import type { RunningServer, ServerContext, ServerOptions } from './types.js';
 import { EventSocketHub } from './ws/event-socket.js';
 import { StageRunner } from './workers/stage-runner.js';
 import { Sweepers } from './workers/sweepers.js';
+// --- H2: SAP ICF integration wiring (docs/004 §3, handoffs/H2 §1.5) ---
+import { resolveSapConfig } from './hooks/sap-config.js';
+import { SapWritebackWorker } from './workers/sap-writeback.js';
 
 const EVENT_SOCKET_PATH = '/api/v1/events';
 
@@ -41,6 +44,8 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
     const aiProvider = options.aiProvider ?? createModelProviderFromEnv(env);
     const startedAtMs = Date.now();
     const clock = (): number => Date.now();
+    // --- H2: SAP integration is optional; missing config disables it silently ---
+    const sap = resolveSapConfig(env);
     const hub = new EventSocketHub({
       db,
       secret,
@@ -57,6 +62,8 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
       hub,
       startedAtMs,
       clock,
+      // --- H2: SAP ICF integration config (docs/004 §3) ---
+      ...(sap.enabled || sap.hookEnabled ? { sap } : {}),
     };
     const app = createApp(ctx);
     hub.attach(app.server);
@@ -72,8 +79,11 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
     const port = listeningPort(app, config.port);
     const stageRunner = new StageRunner(ctx);
     const sweepers = new Sweepers(ctx);
+    // --- H2: SAP writeback worker (no-op when SAP integration is disabled) ---
+    const sapWriteback = new SapWritebackWorker(ctx, sap);
     stageRunner.start();
     sweepers.start();
+    sapWriteback.start();
 
     let closed = false;
     const close = async (): Promise<void> => {
@@ -81,6 +91,8 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
       closed = true;
       await stageRunner.close();
       await sweepers.close();
+      // --- H2: stop the SAP writeback worker ---
+      await sapWriteback.close();
       await hub.close();
       await app.close();
       db.close();

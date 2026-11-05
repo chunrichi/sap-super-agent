@@ -1,0 +1,124 @@
+# Built-in PDO preset (docs/005 §4): the six manual PDO actions collapsed into
+# six stages with five gates G1–G5. `default` (3 stages) stays the minimal
+# template; this preset is opt-in per Demand via `templateId: pdo`.
+#
+# Gate roles: G1/G2 consultant (需求分析/开发说明确认), G3 developer (开发评审),
+# G4 requester (业务验收), G5 ops (发布确认). Stage completion = output schema +
+# checklist; `observe` stages keep the draft and wait for a human.
+templateId: pdo
+version: 1
+stages:
+  - key: intake
+    name: 受理与澄清
+    executorKind: server-ai
+    inputArtifactKinds: []
+    outputArtifactKind: free_note
+    gate: none
+    autonomy: observe
+    requiredRoles: []
+    maxAttempts: 2
+    checklist:
+      - sections_present
+
+  - key: requirement_analysis
+    name: 需求分析
+    executorKind: server-ai
+    inputArtifactKinds:
+      - free_note
+    outputArtifactKind: requirement_analysis
+    gate:
+      gateKey: G1
+      role: consultant
+    autonomy: observe
+    requiredRoles: []
+    maxAttempts: 2
+    checklist:
+      - sections_present
+      - acceptance_covered
+
+  - key: dev_spec
+    name: 开发说明
+    executorKind: server-ai
+    inputArtifactKinds:
+      - requirement_analysis
+    outputArtifactKind: dev_spec
+    gate:
+      gateKey: G2
+      role: consultant
+    autonomy: observe
+    requiredRoles: []
+    maxAttempts: 2
+    checklist:
+      - sections_present
+      - inputs_referenced
+      - not_stale
+
+  - key: dev_implementation
+    name: 开发实现
+    executorKind: vscode
+    inputArtifactKinds:
+      - requirement_analysis
+      - dev_spec
+    outputArtifactKind: code_change
+    gate:
+      gateKey: G3
+      role: developer
+    autonomy: auto
+    requiredRoles:
+      - developer
+    maxAttempts: 3
+    checklist:
+      - inputs_referenced
+      - not_stale
+
+  - key: test_acceptance
+    name: 测试与验收
+    executorKind: server-ai
+    inputArtifactKinds:
+      - code_change
+      - requirement_analysis
+    outputArtifactKind: test_doc
+    gate:
+      gateKey: G4
+      role: requester
+    autonomy: observe
+    requiredRoles: []
+    maxAttempts: 2
+    checklist:
+      - sections_present
+      - inputs_referenced
+      - not_stale
+
+  - key: knowledge_archive
+    name: 知识归档
+    executorKind: server-ai
+    inputArtifactKinds:
+      - test_doc
+      - requirement_analysis
+    outputArtifactKind: knowledge_entry
+    gate:
+      gateKey: G5
+      role: ops
+    autonomy: observe
+    requiredRoles: []
+    maxAttempts: 2
+    checklist:
+      - sections_present
+      - inputs_referenced
+
+gates:
+  - gateKey: G1
+    role: consultant
+    timeoutDays: 3
+  - gateKey: G2
+    role: consultant
+    timeoutDays: 3
+  - gateKey: G3
+    role: developer
+    timeoutDays: 3
+  - gateKey: G4
+    role: requester
+    timeoutDays: 3
+  - gateKey: G5
+    role: ops
+    timeoutDays: 5

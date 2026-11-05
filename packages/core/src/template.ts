@@ -70,3 +70,31 @@ export function findGate(
 export function stageKeys(template: StageTemplateFile): string[] {
   return template.stages.map((stage) => stage.key);
 }
+
+/** Stable key for a pinned template version (`default@1`). */
+export function templateVersionKey(templateId: string, version: number): string {
+  return `${templateId}@${version}`;
+}
+
+/** 0-based position of a stage inside the template order, `-1` when unknown. */
+export function stageIndex(template: StageTemplateFile, stageKey: string): number {
+  return template.stages.findIndex((stage) => stage.key === stageKey);
+}
+
+/** The stage declared after `stageKey`, or undefined for the last stage. */
+export function nextStage(
+  template: StageTemplateFile,
+  stageKey: string,
+): StageTemplate | undefined {
+  const index = stageIndex(template, stageKey);
+  if (index < 0) return undefined;
+  return template.stages[index + 1];
+}
+
+/** Gate definition for a stage, `undefined` when the stage has no human gate. */
+export function gateForStage(
+  template: StageTemplateFile,
+  stage: StageTemplate,
+): GateTemplate | undefined {
+  return stage.gate === 'none' ? undefined : findGate(template, stage.gate.gateKey);
+}

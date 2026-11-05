@@ -7,6 +7,8 @@ import { registerEventRoutes } from './routes/events.js';
 import { registerExecutorRoutes } from './routes/executors.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerTaskRoutes } from './routes/tasks.js';
+// --- H1: stage template + approval gate routes (docs/003 §2.7/§2.5) ---
+import { registerTemplateRoutes } from './routes/templates.js';
 import { registerIdempotency } from './idempotency.js';
 import type { ServerContext } from '../types.js';
 
@@ -46,6 +48,8 @@ export function createApp(ctx: ServerContext): FastifyInstance {
   registerExecutorRoutes(app, ctx);
   registerTaskRoutes(app, ctx);
   registerDemandRoutes(app, ctx);
+  // --- H1: read-only stage templates ---
+  registerTemplateRoutes(app, ctx);
   registerAdminRoutes(app, ctx);
   registerEventRoutes(app, ctx);
   return app;

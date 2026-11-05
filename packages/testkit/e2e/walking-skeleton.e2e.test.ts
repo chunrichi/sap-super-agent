@@ -187,6 +187,7 @@ describe('H0 walking skeleton e2e (M1 local mode, fake AI)', () => {
     expect(created.stages.map((stage) => stage.stageKey)).toEqual([
       'requirement_analysis',
       'dev_implementation',
+      'acceptance_archive',
     ]);
     expect(created.stages[0]?.status).toBe('ready');
 

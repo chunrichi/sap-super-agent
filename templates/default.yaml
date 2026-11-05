@@ -1,5 +1,12 @@
-# H0 minimal walking-skeleton template (docs/003 §2.7).
-# H1 replaces this file with the full 3-stage default (G1/G3/G4) and adds pdo.yaml.
+# Built-in default stage template (docs/003 §2.7, docs/007 S1).
+#
+# 3 stages / gates G1 (requirements consultant), G3 (development review, the
+# developer's task evidence is reviewed by the consultant role in v1) and G4
+# (requester acceptance). Stage completion = output schema + checklist.
+#
+# `templateId + version` is pinned on every Demand at creation time; keep this
+# file (or a copy with the same version) around while demands created with it
+# are still running.
 templateId: default
 version: 1
 stages:
@@ -8,18 +15,58 @@ stages:
     executorKind: server-ai
     inputArtifactKinds: []
     outputArtifactKind: requirement_analysis
-    gate: none
+    gate:
+      gateKey: G1
+      role: consultant
+    autonomy: observe
+    requiredRoles: []
     maxAttempts: 2
     checklist:
       - sections_present
+      - acceptance_covered
+
   - key: dev_implementation
     name: 开发实现
     executorKind: vscode
     inputArtifactKinds:
       - requirement_analysis
     outputArtifactKind: code_change
-    gate: none
+    gate:
+      gateKey: G3
+      role: consultant
+    autonomy: auto
+    requiredRoles:
+      - developer
     maxAttempts: 3
     checklist:
       - inputs_referenced
-gates: []
+      - not_stale
+
+  - key: acceptance_archive
+    name: 验收归档
+    executorKind: server-ai
+    inputArtifactKinds:
+      - requirement_analysis
+      - code_change
+    outputArtifactKind: knowledge_entry
+    gate:
+      gateKey: G4
+      role: requester
+    autonomy: observe
+    requiredRoles: []
+    maxAttempts: 2
+    checklist:
+      - sections_present
+      - inputs_referenced
+      - not_stale
+
+gates:
+  - gateKey: G1
+    role: consultant
+    timeoutDays: 3
+  - gateKey: G3
+    role: consultant
+    timeoutDays: 3
+  - gateKey: G4
+    role: requester
+    timeoutDays: 3

@@ -87,6 +87,7 @@ describe('control-plane REST surface', () => {
     expect(detail.body.stages.map((stage) => stage.stageKey)).toEqual([
       'requirement_analysis',
       'dev_implementation',
+      'acceptance_archive',
     ]);
     const requirementStage = detail.body.stages.find(
       (stage) => stage.stageKey === 'requirement_analysis',

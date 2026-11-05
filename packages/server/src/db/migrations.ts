@@ -315,4 +315,35 @@ CREATE INDEX idx_hook_receipts_delivery ON hook_receipts (hook_id, delivery_id);
 CREATE INDEX idx_hook_receipts_external ON hook_receipts (external_id);
 `,
   },
+  // --- S5: SAP batch AI job queue + lease ledger (docs/003 §4.8.2) ---
+  // Append-only: v1–v6 untouched. One row per (stage_run_id, attempt); a retry
+  // creates a new attempt and therefore a new job, while old jobs stay as audit
+  // records. `lease_expiries` counts recovered leases (§4.8.2); payload/result
+  // are JSON text (payload is the rendered prompt bundle, result a summary —
+  // never the output body, docs/003 §4.8.3).
+  {
+    version: 7,
+    name: 'sap-ai-jobs',
+    sql: `
+CREATE TABLE sap_ai_jobs (
+  id TEXT PRIMARY KEY,
+  stage_run_id TEXT NOT NULL,
+  demand_id TEXT NOT NULL,
+  attempt INTEGER NOT NULL,
+  stage_key TEXT NOT NULL,
+  state TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  claim_id TEXT,
+  lease_expires_at TEXT,
+  result TEXT,
+  last_error TEXT,
+  lease_expiries INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (stage_run_id, attempt)
+);
+CREATE INDEX idx_sap_ai_jobs_state_created ON sap_ai_jobs (state, created_at);
+CREATE INDEX idx_sap_ai_jobs_demand ON sap_ai_jobs (demand_id);
+`,
+  },
 ];

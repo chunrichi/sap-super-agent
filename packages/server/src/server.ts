@@ -84,6 +84,8 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
       ...(sap.enabled || sap.hookEnabled ? { sap } : {}),
       // --- S4: resolved generic Hook config (docs/008 §6) ---
       hooks,
+      // --- S5: SAP batch AI executor config (docs/003 §4.8) ---
+      sapAi: config.sapAi,
     };
     offerFilterState.ctx = ctx;
     const app = createApp(ctx);

@@ -26,3 +26,11 @@ export type {
   HookReconcileExternalCheck,
   HookReconcileOptions,
 } from './hooks/reconcile.js';
+// --- S5: SAP batch AI executor config + job queue (docs/003 §4.8) ---
+export {
+  resolveSapAiBatchConfig,
+  DEFAULT_SAP_AI_HOOK_TOLERANCE_MS,
+} from './sap-ai/config.js';
+export type { SapAiBatchConfig, SapAiBatchOverrides } from './sap-ai/config.js';
+export { SAP_AI_JOB_TERMINAL_STATES, isSapAiJobTerminal } from './db/sap-ai-jobs.js';
+export { openDatabase, migrateDatabase } from './db/database.js';

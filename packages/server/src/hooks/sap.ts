@@ -29,6 +29,8 @@ import {
   insertSapDelivery,
   upsertSapSyncVersion,
 } from './sap-store.js';
+// --- S5: SAP batch AI job counters for the ops status endpoint (docs/003 §4.8) ---
+import { countSapAiJobsByState, lastSapAiJobError } from '../db/sap-ai-jobs.js';
 
 // ---------------------------------------------------------------------------
 // H2: inbound SAP webhook `POST /hooks/sap` (docs/003 §4.5, docs/004 §3.3).
@@ -473,9 +475,11 @@ function parseStoredResult(result: string): string {
  */
 export function registerSapRoutes(app: FastifyInstance, ctx: ServerContext): void {
   const sap = ctx.sap;
-  if (sap === undefined) return;
+  // --- S5: the ops status endpoint is also available in SAP batch AI mode ---
+  const sapAiEnabled = ctx.config.sapAi.enabled;
+  if (sap === undefined && !sapAiEnabled) return;
 
-  if (sap.hookEnabled) {
+  if (sap !== undefined && sap.hookEnabled) {
     app.register(async (scope) => {
       scope.addContentTypeParser('application/json', { parseAs: 'string' }, (_request, body, done) => {
         done(null, body);
@@ -484,15 +488,20 @@ export function registerSapRoutes(app: FastifyInstance, ctx: ServerContext): voi
     });
   }
 
-  if (sap.enabled || sap.hookEnabled) {
+  if (sap !== undefined || sapAiEnabled) {
     app.get('/hooks/sap/status', async (request: FastifyRequest, reply: FastifyReply) => {
       requireAdmin(ctx, request);
       const outbox = countSapOutbox(ctx.db);
-      return reply.send({
-        enabled: { outbound: sap.enabled, inbound: sap.hookEnabled },
+      const body: Record<string, unknown> = {
+        enabled: { outbound: sap?.enabled ?? false, inbound: sap?.hookEnabled ?? false },
         outbox,
+        // --- S5: appended only when SAP batch AI is on; existing fields untouched ---
+        ...(sapAiEnabled
+          ? { aiJobs: { ...countSapAiJobsByState(ctx.db), lastError: lastSapAiJobError(ctx.db) } }
+          : {}),
         serverTime: nowIso(ctx),
-      });
+      };
+      return reply.send(body);
     });
   }
 }

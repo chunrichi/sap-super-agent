@@ -15,6 +15,8 @@ import { registerTemplateRoutes } from './routes/templates.js';
 import { registerSapRoutes } from '../hooks/sap.js';
 // --- S4: generic Hook management/replay/receipt surfaces (docs/003 §4.7) ---
 import { registerHookRoutes } from '../hooks/hook-routes.js';
+// --- S5: SAP batch AI job API + admin requeue (docs/003 §4.8.4) ---
+import { registerSapAiAdminRoutes, registerSapAiJobRoutes } from '../sap-ai/routes.js';
 import { registerIdempotency } from './idempotency.js';
 import type { ServerContext } from '../types.js';
 
@@ -64,5 +66,8 @@ export function createApp(ctx: ServerContext): FastifyInstance {
   registerSapRoutes(app, ctx);
   // --- S4: generic Hook management + replay (root paths, docs/003 §4.7) ---
   registerHookRoutes(app, ctx);
+  // --- S5: SAP batch AI job API (HMAC) + admin requeue; no-op when disabled ---
+  registerSapAiJobRoutes(app, ctx);
+  registerSapAiAdminRoutes(app, ctx);
   return app;
 }

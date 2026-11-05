@@ -79,6 +79,21 @@ export interface StageLedgerRecord {
   startedAt: string;
 }
 
+/**
+ * Run ledger of a *successful* server-AI completion. The local provider and the
+ * S5 SAP-batch executor (`POST /api/v1/sap/ai-jobs/{id}/result`) both feed the
+ * shared {@link completeServerAiStage}; only where model/tokens come from
+ * differs (provider result vs. SAP `usage`, docs/003 §4.8.6).
+ */
+export interface ServerAiStageLedger {
+  model: string | null;
+  promptVersion: string | null;
+  tokens: number;
+  costUsd: number;
+  durationMs: number;
+  startedAt: string;
+}
+
 export interface StageOutputInput {
   contentText: string;
   contentType: string;
@@ -615,6 +630,145 @@ export function failStageAttempt(
     body: `${demand.title} 的「${stageTemplate.name}」重试 ${stageTemplate.maxAttempts} 次仍失败：${reason}`,
   });
   return 'waiting_human';
+}
+
+/**
+ * Shared success path for a server-AI stage attempt (docs/003 §2.2/§4.8.6):
+ * checklist -> attempt ledger -> artifact -> gate/advance. The local runner
+ * (after `runAiStage`) and the SAP-batch result endpoint call *this* function,
+ * so validation/ledger/gate semantics exist exactly once.
+ *
+ * The caller must already be inside a `writeTransaction`. A checklist failure
+ * is applied through `failStageAttempt` (retry or waiting_human, never a
+ * half-persisted artifact) and reported as `ok:false`.
+ */
+export interface CompleteServerAiStageParams {
+  demand: Demand;
+  template: StageTemplateFile;
+  stageTemplate: StageTemplate;
+  stageRun: StageRun;
+  output: unknown;
+  ledger: ServerAiStageLedger;
+}
+
+export interface ServerAiStageCompletionResult {
+  ok: boolean;
+  /** Stage status after the completion attempt (`null` when the run is gone). */
+  status: StageRun['status'] | null;
+  artifactId: string | null;
+  artifactVersion: number | null;
+  failures: string[];
+}
+
+export function completeServerAiStage(
+  tx: TransactionContext,
+  ctx: ServerContext,
+  params: CompleteServerAiStageParams,
+): ServerAiStageCompletionResult {
+  const { template, stageTemplate } = params;
+  const current = getStageRun(ctx.db, params.stageRun.id);
+  if (current === null) {
+    return { ok: false, status: null, artifactId: null, artifactVersion: null, failures: ['stage run not found'] };
+  }
+  if (current.status !== 'running') {
+    return {
+      ok: false,
+      status: current.status,
+      artifactId: null,
+      artifactVersion: null,
+      failures: [`stage is ${current.status}, not running`],
+    };
+  }
+  const demand = getDemand(ctx.db, current.demandId) ?? params.demand;
+  const contentText = JSON.stringify(params.output, null, 2);
+  const structured =
+    typeof params.output === 'object' && params.output !== null
+      ? (params.output as Record<string, unknown>)
+      : null;
+  const latestInputRefs = latestArtifactRefsByKind(ctx.db, demand.id);
+  const completion = evaluateStageCompletion({
+    stage: stageTemplate,
+    demand,
+    outputText: contentText,
+    outputJson: structured,
+    inputRefs: current.inputRefs,
+    latestInputRefs,
+    outputStale: false,
+    schemaOk: true,
+  });
+  const ledgerRecord: StageLedgerRecord = {
+    model: params.ledger.model,
+    promptVersion: params.ledger.promptVersion,
+    schemaOk: true,
+    tokens: params.ledger.tokens,
+    costUsd: params.ledger.costUsd,
+    durationMs: params.ledger.durationMs,
+    error: null,
+    startedAt: params.ledger.startedAt,
+  };
+  if (!completion.ok) {
+    const reason = `checklist: ${completion.failures.join('; ')}`;
+    const status = failStageAttempt(tx, ctx, {
+      demand,
+      template,
+      stageRun: current,
+      stageTemplate,
+      reason,
+      error: reason,
+      ledger: ledgerRecord,
+    });
+    return { ok: false, status, artifactId: null, artifactVersion: null, failures: [...completion.failures] };
+  }
+  // A duplicate result must not collide on the (stage_run, attempt) ledger PK.
+  if (!hasStageAttempt(ctx.db, current.id, current.attempt)) {
+    insertStageAttempt(ctx.db, {
+      stageRunId: current.id,
+      attempt: current.attempt,
+      model: params.ledger.model,
+      promptVersion: params.ledger.promptVersion,
+      inputRefs: current.inputRefs,
+      schemaOk: true,
+      tokens: params.ledger.tokens,
+      costUsd: params.ledger.costUsd,
+      durationMs: params.ledger.durationMs,
+      error: null,
+      startedAt: params.ledger.startedAt,
+      finishedAt: tx.now,
+    });
+  }
+  const summary =
+    structured !== null && typeof structured['summary'] === 'string'
+      ? (structured['summary'] as string)
+      : null;
+  const persisted = persistStageArtifact(tx, ctx, {
+    demand,
+    template,
+    stageRun: current,
+    stageTemplate,
+    output: {
+      contentText,
+      contentType: 'application/json',
+      authorType: 'ai',
+      authorId: 'server-ai',
+      summary,
+      title: stageTemplate.name,
+    },
+  });
+  const status = completeStageAfterArtifact(tx, ctx, {
+    demand,
+    template,
+    stageRun: current,
+    stageTemplate,
+    artifact: persisted.artifact,
+    artifactVersion: persisted.artifactVersion,
+  });
+  return {
+    ok: true,
+    status,
+    artifactId: persisted.artifact.id,
+    artifactVersion: persisted.artifactVersion,
+    failures: [],
+  };
 }
 
 /**

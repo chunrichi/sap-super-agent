@@ -6,9 +6,9 @@
 ## 0. 一分钟了解
 
 - **项目**：面向 SAP 研发交付的 super-agent。需求记录在 SAP（ICF + MIME 自建 Web），编排在可移植控制平面（本地 M1 / 独立服务 M2），编码在开发者 VSCode（Copilot Chat 人机协作），重复文档由服务端 AI（BYOK）主动生成。
-- **当前状态（2026-11-05）**：**H0 / S0 已完成**（`feat/h0-walking-skeleton` @ `a9e5e98`，已推送）；**H1 / S1 已完成**（`feat/h1-gates` @ `238fd08`：模板/门禁/checklist/工件版本与 stale/autonomy/golden set）；**H2 / S2 Phase A 已完成，Phase B blocked**（`feat/h2-sap` @ `0eb35c4`：fake ICF + `sap-adapter` + `/hooks/sap` + 回写 worker + `sap/` ABAP 源文件，未连接真实系统、未做 SAP 写操作）。H1+H2 已在 `integrate/h1-h2` 合并验收：`pnpm check`（**350 tests**）/ `pnpm e2e`（**9/9**）/ `pnpm eval:golden` / `pnpm sap:check` / `pnpm build` 全绿 + curl 手工冒烟通过；三个分支均**未 push**。详见 [handoffs/STATUS.md](handoffs/STATUS.md) 的「Lead 集成验收」。
+- **当前状态（2026-11-05）**：**H0 / S0 已完成**（`feat/h0-walking-skeleton` @ `a9e5e98`，已推送）；**H1 / S1 已完成**（`feat/h1-gates` @ `238fd08`：模板/门禁/checklist/工件版本与 stale/autonomy/golden set）；**H2 / S2 Phase A 已完成，Phase B blocked**（`feat/h2-sap` @ `0eb35c4`：fake ICF + `sap-adapter` + `/hooks/sap` + 回写 worker + `sap/` ABAP 源文件，未连接真实系统、未做 SAP 写操作）。H1+H2 已在 `integrate/h1-h2` 合并验收：`pnpm check`（**350 tests**）/ `pnpm e2e`（**9/9**）/ `pnpm eval:golden` / `pnpm sap:check` / `pnpm build` 全绿 + curl 手工冒烟通过。**已通过 PR #1（H0）/ #2（H1）/ #3（H2）合入 `main`**（H1 merge `a510be2`、H2 merge `a242afe`；main CI 全绿，main 树与 `integrate/h1-h2` 一致）。详见 [handoffs/STATUS.md](handoffs/STATUS.md) 的「Lead 集成验收」。
 - **本轮目标（已达成）**：S1（门禁与模板，H1）与 S2（SAP 需求系统，H2）——H1 全量完成；H2 Phase A（离线/CI 全链路）完成，Phase B（真实测试系统联调）等待用户提供 package/TR/Basis 配置。
-- **下一棒**：先读 [handoffs/STATUS.md](handoffs/STATUS.md) 的「Lead 集成验收」与「H2 Phase A 偏差与遗留」，再按 [docs/006](docs/006-repo-and-git.md) 走 PR（H0→main 先合，再 H1/H2 或 `integrate/h1-h2`）；之后是 S3（多人在线与派发）与 H2 Phase B。执行协调与 worktree 用法见 [handoffs/H1-H2-execution-handoff.md](handoffs/H1-H2-execution-handoff.md)。
+- **下一棒**：S0/S1/S2-PhaseA 已全部在 `main`（CI 绿）。下一步：① **H2 Phase B**（真实测试系统联调，需人工输入 package/TR/Basis SSO/HMAC，见 STATUS「H2 Phase A 偏差与遗留」）；② **S3 多人在线与派发**（需先按 [docs/007 S3](docs/007-roadmap.md) 新建任务书/handoff，再认领）；③ 发布前真实 VSCode Extension Host/VSIX 冒烟。执行协调与 worktree 用法见 [handoffs/H1-H2-execution-handoff.md](handoffs/H1-H2-execution-handoff.md)。
 
 ## 1. 阅读顺序
 
@@ -46,10 +46,10 @@
 H0（done）──┬──> H1（done：feat/h1-gates）
             └──> H2（Phase A done：feat/h2-sap；Phase B blocked 等待测试系统/package/TR）
                           │
-                          └──> 集成验收（integrate/h1-h2，已合并，未 push）
+                          └──> 集成验收（已合入 main：PR #2 `a510be2` + PR #3 `a242afe`）
 ```
 
-> **当前进度（2026-11-05）**：H0/H1 done；H2 Phase A done、Phase B blocked。并行采用 worktree 隔离（`.sap-superagent-worktrees/{h1,h2}`，分支 `feat/h1-gates` / `feat/h2-sap`），集成分支 `integrate/h1-h2`；门禁、冒烟与偏差详见 [handoffs/STATUS.md](handoffs/STATUS.md)。
+> **当前进度（2026-11-05）**：H0/H1 done 并已合入 `main`（PR #1/#2）；H2 Phase A done 并已合入 `main`（PR #3），Phase B blocked。并行采用 worktree 隔离（`.sap-superagent-worktrees/{h1,h2}`，分支 `feat/h1-gates` / `feat/h2-sap`）；门禁、冒烟、落地记录与偏差详见 [handoffs/STATUS.md](handoffs/STATUS.md)。
 
 - 同一时刻**一个 Agent 只做一个任务**。需要并行时，在 `handoffs/STATUS.md` 登记 owner + 写范围，避免两个 Agent 改同一目录。
 - H2 与 H1 的 `packages/server` 写范围有交集：H1 只改 `packages/server/src/{core 集成,approvals,templates}.ts`，H2 只改 `packages/server/src/hooks/` 与 `workers/sap-*`；都要改共享文件时在 STATUS.md 协调。

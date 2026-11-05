@@ -59,6 +59,9 @@
 | 2026-11-05 | Lead 裁决共享文件：H1 占迁移 v3+、H2 从 v4 起步；`app.ts`/`migrations.ts`/`types.ts` 只追加 + `// --- H1/H2 ---` 标记；H2 Phase B 写操作 blocked、只读诊断可做 |
 | 2026-11-05 | H1 完成（feat/h1-gates @ 238fd08）：303 tests / e2e 8/8 / eval:golden 24 cases；H2 完成 Phase A（feat/h2-sap @ 0eb35c4）：299 tests / e2e 5/5 / sap:check 5 pass；两分支均未 push |
 | 2026-11-05 | Lead 集成：`integrate/h1-h2` merge `feat/h2-sap`（冲突 3 处按 §4 裁决），commit `bd37fa1` 把 SAP 审批接到 H1 门禁运行时并适配 SAP 测试/e2e；集成门禁 350 tests / e2e 9/9 / eval:golden / sap:check / build 全绿；curl 手工冒烟 G1→自动任务→G3→G4→done 通过；H1/H2 标记 done（H2 Phase B blocked） |
+| 2026-11-05 | H1 落地：`feat/h1-gates` 推送 → PR #2 → CI ✅ 56s → merge commit `a510be2` 合入 main；main 树 == H1 tip（`git diff` 为空） |
+| 2026-11-05 | H2 落地：`feat/h2-sap` rebase 到新 main（`--onto origin/main a9e5e98`，共享文件取集成版）+ cherry-pick 集成修复，分支树 == `integrate/h1-h2`；推送 → PR #3 → CI ✅ 58s → merge commit `a242afe` 合入 main；main 树 == `integrate/h1-h2`（`git diff` 为空），main push CI ✅ |
+| 2026-11-05 | 收尾 docs PR：把「已合入 main / PR #1–#3 / CI 结果」写回 STATUS 与 HANDOFF；远端 `feat/h1-gates`、`feat/h2-sap` 分支合并后删除 |
 
 ## H2 Phase A 偏差与遗留（交接给 H1 / Lead / 用户）
 
@@ -75,7 +78,7 @@
 
 ## Lead 集成验收（H1+H2）
 
-- **基线决策**：按 [H1-H2-execution-handoff.md](H1-H2-execution-handoff.md) §0.1 的**备选方案**，H1/H2 分支都从 H0 基线 `a9e5e98`（`feat/h0-walking-skeleton` 含交接文档）开出；**未把 H0 合入 `main`**（main 只接受 PR+CI，属用户/团队流程。合并建议：H0→main 先走 PR/squash，H1/H2 再 rebase/PR）。集成分支 `integrate/h1-h2`。
+- **基线决策**：H1/H2 分支从 H0 基线 `a9e5e98` 开出（交接文档 §0.1 备选方案）；H0 由 PR #1 合入 `main`（`de173f2`）后，H1/H2 分别以 PR #2/#3 合入。集成分支 `integrate/h1-h2` 用于合并验收。
 - **worktree 隔离**：`.sap-superagent-worktrees/h1`（feat/h1-gates）、`.sap-superagent-worktrees/h2`（feat/h2-sap）、`.sap-superagent-worktrees/integration`（integrate/h1-h2）；两个执行 Agent 全程未共用工作目录、未 push、未动 main。
 - **合并与冲突裁决**：`feat/h2-sap` merge 进 `integrate/h1-h2`，冲突 3 处：`packages/server/src/db/migrations.ts`（H1 v3 在前、H2 v4 在后，v1/v2 未动）、`packages/server/src/http/app.ts`（H1 三组路由 + H2 `registerSapRoutes` 并存）、`handoffs/STATUS.md`（两行/两段日志/两节偏差合并）；`types.ts`/`server.ts` 自动合并。
 - **语义集成修复**（commit `bd37fa1`）：SAP `artifact.approved/rejected` 不再走 H2 临时门禁逻辑，改为解析绑定 `(artifactId, artifactVersion)` 的 H1 pending Approval，调用 `decideApprovalApprove/decideApprovalReject`（已决门禁重复投递为幂等 no-op）；删除 H2 重复的审批 SQL / 阶段推进片段与重复迁移假设；SAP 集成测试与 e2e 适配 3 阶段 + 门禁模板（G1 停在 waiting_human、SAP 决策推进、驳回开新 attempt、409 重拉重放按新语义断言）。`contracts/` 合并后仍为 36 schemas / 5 examples / 19 routes（H2 未改 protocol）。
@@ -87,6 +90,6 @@
   - `pnpm sap:check` ✅ 5 pass / 1 skip（AFF `abap validate:aff` 17/17、`abap check content` 6 文件、无凭据/地址/TR；syntax 按设计离线跳过）
   - `pnpm build` ✅ 8/8
   - **curl 手工冒烟** ✅：healthz → `GET /templates`（default 3 阶段/3 门禁、pdo 6 阶段/5 门禁）→ 建 default Demand → G1 前停 `waiting_human`（工件 `in_review`、Approval 绑定 v1）→ `GET /approvals?assignee=me` → approve G1（重复决策 409）→ 自动生成 vscode 任务（`requiredRoles=["developer"]`，context.md 614 字符）→ 注册/心跳/claim → 提交 `code_change` 工件 → complete → G3 approve → G4 approve → demand `done`（3 个工件 approved，事件链完整）→ 通知 6 条未读 → 另建 pdo Demand 6 阶段且原 default Demand 不受影响。
-- **未推送**：H1/H2/集成三个分支都未 push；建议按 docs/006 走 PR（H0→main 先合并，再 H1/H2 各自 PR 或集成分支整体 PR）。
+- **落地（已合入 main）**：PR #1 H0 → `de173f2`；PR #2 H1 → `a510be2`（CI ✅ 56s）；PR #3 H2 → `a242afe`（CI ✅ 58s）。H2 在 H1 合入后 rebase 到新 main 并包含集成修复 `4e105c1`，合入后 **`main` 树与 `integrate/h1-h2` 完全一致**（`git diff` 为空）；main 的 push CI 全绿。本地 `integrate/h1-h2` 保留为交付对照，远端 `feat/h1-gates`/`feat/h2-sap` 合并后删除（`feat/h0-walking-skeleton` 属 PR #1，留待用户处理）。
 - **待用户/人工输入**：H2 Phase B（测试系统 package/TR、Basis SSO/ICF 服务账号、控制平面可达 URL + HMAC secret 注入方式）；H0→main 合入方式；真实 VSCode Extension Host 冒烟（发布前）。
 

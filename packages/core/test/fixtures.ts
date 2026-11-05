@@ -20,7 +20,7 @@ export const vscodeExecutor: Executor = {
   accepting: true,
   maxConcurrent: 2,
   protocolVersion: '1.0.0',
-  cliVersion: '0.0.0',
+  cliVersion: '1.0.0',
   createdAt: NOW,
   updatedAt: NOW,
 };

@@ -56,7 +56,7 @@ const examples = {
     user: 'DEV001',
     machineIdHash: 'sha256:example',
     protocolVersion: '1.0.0',
-    cliVersion: '0.0.0',
+    cliVersion: '1.0.0',
     capabilities: ['coding'],
     roles: ['developer'],
     workspaces: [

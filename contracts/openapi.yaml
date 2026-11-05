@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: SAP Super Agent Control Plane
-  version: 0.0.0
+  version: 1.0.0
   description: |
     S0–S1 HTTP surface of the control plane: walking skeleton plus stage
     templates, approval gates, artifact version chains and notifications (H1).

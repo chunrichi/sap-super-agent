@@ -1,6 +1,6 @@
 {
   "name": "@sap-superagent/ai",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Server-side AI stages: model providers, prompts, structured output validation, run ledger.",

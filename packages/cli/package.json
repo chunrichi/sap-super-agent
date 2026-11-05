@@ -1,6 +1,6 @@
 {
   "name": "@sap-superagent/cli",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "M1 entrypoint: init / dev / token / doctor.",

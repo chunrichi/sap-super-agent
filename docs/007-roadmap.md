@@ -75,10 +75,15 @@
 
 ### S5 SAP 宿主受限模式
 
-> **状态（2026-11-05）：S5 Phase A 进行中**（分支 `feat/s5-sap-hosted`）。交付口径见 [handoffs/S5-sap-hosted-mode.md](../handoffs/S5-sap-hosted-mode.md) / [S5-execution-handoff.md](../handoffs/S5-execution-handoff.md)、协议 [003 §4.8](003-domain-and-protocol.md#48-sap-批处理-ai-执行器m3s5)；M3 部署见 [010-m3-deployment.md](010-m3-deployment.md)。Phase B 真机依赖人工输入（控制平面可达 + HMAC/服务账号 + SM36/bgRFC + 企业 AI 网关），输入缺失按 blocked 记录。
+> **状态（2026-11-05）：S5 Phase A 已交付，待合入**（分支 `feat/s5-sap-hosted`；Phase B 真机 blocked）。交付：
+> 契约先行（[003 §4.8](003-domain-and-protocol.md#48-sap-批处理-ai-执行器m3s5) + `stage.ai_job.*` 事件 + `packages/protocol/src/ai-jobs.ts`，`contracts/` 现为 **59 schemas / 9 examples / 27 routes**，以 `pnpm contract:check` 输出为准）；
+> 控制平面：迁移 v7 `sap_ai_jobs` + job 队列/租约/幂等/sweeper/重启恢复、`SA_SAP_AI_BATCH` 等配置、StageRunner 委派（不调本地 provider）、`/api/v1/sap/ai-jobs/{next,claim,heartbeat,result}`（HMAC）、admin requeue、`/hooks/sap/status` 追加 `aiJobs`；
+> SAP 侧：`ZCL_ZSA_AI_BATCH`（取 job → 企业 AI 网关 → 回传原始输出，HMAC/JSON 复用既有规则）+ `ZSA_AI_BATCH_RUN`（SM36 周期 job 入口）+ `ZSA_CFG` 新键；离线 `pnpm sap:check` 绿；
+> 测试设施：`FakeAiGateway`/`FakeSapAiBatch` + server 集成测试 + SAP 宿主全链路 e2e；M3 部署/运维文档 [010-m3-deployment.md](010-m3-deployment.md)。
+> 门禁：`pnpm check` / `pnpm e2e` / `pnpm build` / `pnpm sap:check` / `pnpm contract:check`（测试计数以最终门禁输出为准）。Phase B 真机依赖人工输入（控制平面可达 + HMAC/服务账号 + SM36/bgRFC + 企业 AI 网关），输入缺失按 blocked 记录（[010 §9.3](010-m3-deployment.md#93-phase-b-人工输入清单blocked-判据)）。
 
 - **目标**：满足"数据与流程尽量不出 SAP"的诉求。
-- **交付**：SAP 侧 bgRFC 批处理 job 调 AI（需求分析/测试文档等结构化阶段）、SAP 内审批直接驱动阶段推进、控制平面轻服务与 SAP 同网段部署（或内嵌于 ABAP 的 HTTP 调用）、M3 部署文档。
+- **交付**：SAP 侧批处理 job 调 AI（需求分析/测试文档等结构化阶段；默认 SM36 周期 job，bgRFC 为 Phase B 可选）、SAP 内审批直接驱动阶段推进、控制平面轻服务与 SAP 同网段部署、M3 部署与运维文档（[010](010-m3-deployment.md)）。
 - **验收**：无任何开发者在线时，需求分析与测试文档仍能生成；审批在 SAP 内完成；敏感内容不离开企业边界。
 - **风险**：ABAP 侧 AI 调用与长任务的管理复杂度。对策：只做"批处理 + 轮询"，不做交互式会话；失败可重试、可人工补跑。
 

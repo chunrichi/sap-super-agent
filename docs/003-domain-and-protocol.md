@@ -356,7 +356,7 @@ queued/claimed ──阶段或需求取消──> cancelled
 - **claimed**：带 `claimId`（服务端 ULID）与租约；租约有效期内重复 claim → `409`。
 - **租约过期**：sweeper 把 `claimed` 且租约过期的 job 放回 `queued`（`claimId/lease` 清空，**不增 attempt**），lease 过期计数 +1；计数达到 `SA_SAP_AI_JOB_MAX_LEASE_EXPIRIES` → 按阶段失败处理（`expired` + `stage.ai_job.failed`）。
 - **超龄**：`now - created_at > SA_SAP_AI_JOB_MAX_AGE_MS` 的未终态 job → `expired` + 按阶段失败处理。
-- **结果幂等**：job 已 `succeeded`/`failed`/`expired`/`cancelled` 时重复 result 返回 `200 {duplicate:true, accepted:false}`（不重复写事件/工件/attempt ledger）；`queued` 状态发 result → `409`；claimId 不匹配 → `409`。
+- **结果幂等**：job 已 `succeeded`/`failed`/`expired`/`cancelled` 时重复 result 返回 `200 {duplicate:true, accepted:false}`（不重复写事件/工件/attempt ledger）；`queued` 状态发 result → `409`；claimId 不匹配 → `409`；阶段已不在同一 attempt 的 `running`（已推进/取消）→ job 置 `cancelled` 并返回 `200 {accepted:false, duplicate:false}`，SAP 应停止重试。
 - **取消**：阶段或需求被取消后，sweeper 把该 attempt 的未终态 job 置 `cancelled`（终态、审计）。
 
 #### 4.8.3 job payload（数据边界）

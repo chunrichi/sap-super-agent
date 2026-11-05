@@ -2,7 +2,7 @@
 
 > 面向 SAP 研发交付的 super-agent：需求记录在 SAP，编排在控制平面，编码在开发者身边的 VSCode，重复的文档工作由服务端 AI 主动完成。
 
-**状态：S0–S4 与 H2（SAP 需求系统）已完成并合入 `main`（S4 = Hook 契约 + `http` 示例目标，PR #10）。** 代码按 [路线图](docs/007-roadmap.md) 推进；`pnpm check` / `pnpm e2e` / `pnpm eval:golden` / `pnpm hooks:reconcile` 为当前验收命令。
+**状态：S0–S4 与 H2（SAP 需求系统）已完成并合入 `main`（S4 = Hook 契约 + `http` 示例目标，PR #10）；S5/M3（SAP 批处理 AI 阶段）Phase A 已交付（分支 `feat/s5-sap-hosted`，未合入），Phase B 真机仍 blocked（缺控制平面可达/HMAC/服务账号/SM36/企业 AI 网关输入，见 [docs/010 §9.3](docs/010-m3-deployment.md#93-phase-b-人工输入清单blocked-判据)）。** 代码按 [路线图](docs/007-roadmap.md) 推进；`pnpm check` / `pnpm e2e` / `pnpm build` / `pnpm sap:check` / `pnpm contract:check` 为当前验收命令。
 
 **设计演示**：[demo/index.html](demo/index.html) — 10 幕 HTML 动画，浏览器打开即可（自动播放，支持 ← → / 空格 / 重播）。
 
@@ -46,7 +46,7 @@ flowchart LR
 - **MCP 可选**：v1.1 可把控制平面能力暴露为 MCP tools，供其他 AI 客户端复用。
 - **授权先于自主**：每个阶段有明确门禁，AI 只做被授权的范围；所有状态变化进入不可变事件日志。
 - **门禁与模板是一等公民**：`templates/default.yaml`（3 阶段 G1/G3/G4）与 `templates/pdo.yaml`（6 阶段 G1–G5）是**配置**不是代码分支；阶段完成 = 输出 schema + checklist 断言；工件不可变、版本可追溯，上游出新版本会把下游工件标 `stale` 并阻断门禁；`pnpm eval:golden` 离线评测人工修改率并给出 auto / observe 建议（脚本不改模板）。
-- **三个部署模式**：M1 本地一条命令、M2 团队独立服务、M3 SAP 受限宿主（需求/审批/AI 批处理在 SAP，交互式 agent 不在 ABAP）。
+- **三个部署模式**：M1 本地一条命令、M2 团队独立服务、M3 SAP 受限宿主（需求/审批/AI 批处理在 SAP，交互式 agent 不在 ABAP）。M3 的拓扑、网络矩阵、密钥、单节点部署与 runbook 见 [010](docs/010-m3-deployment.md)。
 
 ## 文档
 
@@ -62,6 +62,7 @@ flowchart LR
 - [007 路线图](docs/007-roadmap.md)
 - [008 Hook 契约](docs/008-hooks.md)
 - [009 测试策略](docs/009-testing.md)
+- [010 M3 部署与运维（SAP 宿主受限模式）](docs/010-m3-deployment.md)
 - 调研附录：[DeepSeek super-agent 文章](docs/reference/deepseek-superagent-paper.md)、[参考实现分析](docs/reference/prototype-analysis.md)、[技术可行性](docs/reference/stack-feasibility.md)、[PDO 流程映射](docs/reference/pdo-flow-review.md)
 - 执行交接：[HANDOFF.md](HANDOFF.md) · 进度看板 [handoffs/STATUS.md](handoffs/STATUS.md)
 - 原始需求简报：[docs/plan.md](docs/plan.md)
@@ -152,18 +153,46 @@ pnpm hooks:reconcile --json
 
 信封、配置字段、重试/死信/重放/回执/对账口径见 [008 Hook 契约](docs/008-hooks.md)；四个占位适配器见 [examples/hooks/README.md](examples/hooks/README.md)。契约变更走 `pnpm contract:gen`。
 
+### M3：SAP 宿主模式（SAP 批处理 AI）
+
+M3（S5）把模板中的 `server-ai` 阶段**委派**给 SAP 侧批处理执行器：控制平面渲染 prompt 并写入 job 队列 → SAP 的 SM36 周期 job（`ZSA_AI_BATCH_RUN`）拉取 job、调用企业 AI 网关、回传模型原始输出 → 控制平面继续做 JSON 提取/schema/checklist/ledger/工件/门禁。**默认关闭**：不设 `SA_SAP_AI_BATCH` 时行为与 H0–S4 完全一致；SAP job API 不注册。
+
+```sh
+# 控制平面（M3）本机演练：服务化部署（systemd / docker compose）与网络矩阵见 docs/010 §5
+SA_SAP_AI_BATCH=1 \
+SA_AI_MODEL=<pinned-model-name> \
+SA_SAP_HOOK_SECRET=<与 SAP 安全存储同一把，openssl rand -hex 32> \
+SA_SAP_BASE_URL=https://<sap-host>.<internal-domain>:<icf-port>/sap/zsa \
+SA_SAP_SERVICE_USER=<service-account> \
+SA_SAP_SERVICE_PASSWORD=<secret> \
+pnpm dev            # 另开终端签发 admin token：pnpm cli token --kind admin
+
+# 队列与最后错误（启用 M3 时出现 aiJobs 计数）
+curl -s http://127.0.0.1:3080/hooks/sap/status -H "authorization: Bearer $ADMIN_TOKEN"
+# 失败/过期 job 重排（幂等；仅阶段仍 running 同一 attempt）
+curl -s -X POST http://127.0.0.1:3080/api/v1/admin/sap/ai-jobs/<jobId>/requeue \
+  -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' \
+  -d '{"reason":"gateway recovered, retry"}'
+```
+
+- 协议：[003 §4.8](docs/003-domain-and-protocol.md)；部署/网络/配置/密钥/数据边界/runbook/验收 checklist：[010 M3 部署与运维](docs/010-m3-deployment.md)；SAP 对象与 abap-cli 命令：[sap/README.md](sap/README.md)。
+- Phase A 离线验证：`pnpm e2e` 的 `sap-hosted` 用例用进程内 `FakeSapAiBatch` + `FakeAiGateway` 跑通"无开发者在线"全链路；真机 Phase B 依赖输入缺失时按 blocked 记录，不使用伪造数据。
+- 数据边界：控制平面不持有 AI 网关 key；prompt/输出只在"控制平面 → SAP → 内网网关"路径传输；SAP 与控制平面日志不落正文。
+
 开发与验收门禁：
 
 ```sh
 pnpm check          # typecheck + eslint + 单测/集成测试 + contracts 快照
-pnpm e2e            # M1 纵向闭环 + 门禁审批 + SAP 链路 + 多执行器派发 + Hook 全链路（009 #1–#5/#8/#9/#11/#16）
-pnpm eval:golden    # golden set 离线评测（fake provider 确定性输出 evals/report.json）
+pnpm e2e            # M1 纵向闭环 + 门禁审批 + SAP 链路 + 多执行器派发 + Hook 全链路 + SAP 宿主批处理 AI（009 #1–#5/#8/#9/#11/#16/#17/#18）
 pnpm build          # 所有包按依赖拓扑序构建（产物在 .gitignore 内）
+pnpm sap:check      # SAP AFF 离线校验（abap validate:aff + abap check content；CI 不连 SAP）
+pnpm contract:check # 契约快照与 protocol 一致（S5 后应输出 59 schemas / 9 examples / 27 routes，以命令输出为准）
+pnpm eval:golden    # golden set 离线评测（fake provider 确定性输出 evals/report.json）
 pnpm contract:gen   # 从 protocol 重新生成 contracts/json-schema 与 examples
 pnpm hooks:reconcile # Hook 对账（只读差异报告；默认退出 0，--fail-on-diff 时 3）
 ```
 
-服务端 AI 走 BYOK（OpenAI 兼容 / DeepSeek / Azure，Key 只在服务端）；无 Key 时默认 `fake` provider，e2e 与离线开发不依赖网络。配置项见 [.env.example](.env.example) 与 [docs/005](docs/005-clients-and-ai.md)。
+服务端 AI 走 BYOK（OpenAI 兼容 / DeepSeek / Azure，Key 只在服务端）；无 Key 时默认 `fake` provider，e2e 与离线开发不依赖网络。M3 的 AI 网关 key 只在 SAP 安全存储（`ZSA_CFG.AI_KEY_REF` 引用），控制平面不持有。配置项见 [.env.example](.env.example) 与 [docs/005](docs/005-clients-and-ai.md)。
 
 ## 参与
 

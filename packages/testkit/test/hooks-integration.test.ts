@@ -11,14 +11,17 @@ import {
 } from '@sap-superagent/server';
 import {
   hookEnvelopeSchema,
+  type DemandDetailResponse,
   type EventEnvelope,
   type HookEnvelope,
+  type HookReceiptBody,
   type HookReplayResponse,
   type ListHooksResponse,
 } from '@sap-superagent/protocol';
 import {
   FakeHookTarget,
   apiRequest,
+  buildFakeHookHeaders,
   computeFakeHookSignature,
   createTempStateDir,
   removeTempStateDir,
@@ -536,5 +539,182 @@ hooks:
     const disabled = await replay(context, 'disabled-hook', eventId, 'k-3');
     expect(disabled.status).toBe(409);
     expect((disabled.body as { error: { code: string } }).error.code).toBe('conflict');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §1.5 inbound receipts: HMAC verification, idempotency and v1 record-only.
+// ---------------------------------------------------------------------------
+
+function receiptBody(
+  idempotencyKey: string,
+  externalId: string,
+  status: HookReceiptBody['payload']['status'] = 'created',
+): HookReceiptBody {
+  return {
+    eventType: 'hook.receipt',
+    idempotencyKey,
+    occurredAt: new Date().toISOString(),
+    payload: {
+      externalId,
+      status,
+      detailRef: `https://jira.example.com/browse/${externalId}`,
+    },
+  };
+}
+
+interface ReceiptCallOptions {
+  secret?: string;
+  delivery?: string;
+  timestamp?: string;
+  rawBody?: string;
+}
+
+async function postReceipt(
+  context: HookTestContext,
+  target: string,
+  body: unknown,
+  options: ReceiptCallOptions = {},
+): Promise<{ status: number; body: { accepted?: boolean; duplicate?: boolean; receiptId?: string; externalId?: string; status?: string; error?: { code: string; message: string } }; headers: Headers }> {
+  const rawBody = options.rawBody ?? JSON.stringify(body);
+  const delivery =
+    options.delivery ??
+    (typeof body === 'object' && body !== null && 'idempotencyKey' in body
+      ? String((body as { idempotencyKey: unknown }).idempotencyKey)
+      : 'delivery-1');
+  const headers = buildFakeHookHeaders({
+    secret: options.secret ?? HOOK_SECRET,
+    body: rawBody,
+    delivery,
+    ...(options.timestamp === undefined ? {} : { timestamp: options.timestamp }),
+  });
+  const response = await fetch(`${context.server.url}/hooks/${target}/receipt`, {
+    method: 'POST',
+    headers,
+    body: rawBody,
+  });
+  return { status: response.status, body: (await response.json()) as never, headers: response.headers };
+}
+
+describe('generic Hook inbound receipts (docs/008 §4)', () => {
+  it('records a signed receipt, emits hook.receipt and is idempotent', async () => {
+    const context = await bootHooks({ events: ['demand.created'] });
+    const body = receiptBody('JIRA-1234:created', 'JIRA-1234');
+    const first = await postReceipt(context, 'http-example', body);
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    expect(first.body).toMatchObject({
+      accepted: true,
+      duplicate: false,
+      hookId: 'http-example',
+      externalId: 'JIRA-1234',
+      status: 'created',
+    });
+    const receiptId = first.body.receiptId as string;
+    expect(receiptId).toBeDefined();
+
+    const receiptEvent = await waitForEvent(context, 'hook.receipt', (event) => {
+      return event.data['receiptId'] === receiptId;
+    });
+    expect(receiptEvent.subject).toEqual({ type: 'hook', id: 'http-example' });
+    expect(receiptEvent.data).toMatchObject({
+      hookId: 'http-example',
+      receiptId,
+      idempotencyKey: 'JIRA-1234:created',
+      externalId: 'JIRA-1234',
+      status: 'created',
+      duplicate: false,
+      linked: false,
+    });
+
+    const rows = queryDb<{
+      id: string;
+      hook_id: string;
+      idempotency_key: string;
+      delivery_id: string;
+      external_id: string;
+      status: string;
+    }>(context, 'SELECT * FROM hook_receipts');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: receiptId,
+      hook_id: 'http-example',
+      idempotency_key: 'JIRA-1234:created',
+      external_id: 'JIRA-1234',
+      status: 'created',
+    });
+
+    // Same idempotencyKey + same X-SA-Delivery: cached, no second row/event.
+    const duplicate = await postReceipt(context, 'http-example', body);
+    expect(duplicate.status).toBe(200);
+    expect(duplicate.body).toMatchObject({ accepted: true, duplicate: true, receiptId });
+    // Same delivery id with a different idempotencyKey is still the same delivery.
+    const replayedDelivery = await postReceipt(
+      context,
+      'http-example',
+      receiptBody('JIRA-1234:updated', 'JIRA-1234', 'updated'),
+      { delivery: body.idempotencyKey },
+    );
+    expect(replayedDelivery.body).toMatchObject({ duplicate: true, receiptId });
+    expect(queryDb(context, 'SELECT COUNT(*) AS total FROM hook_receipts')).toEqual([{ total: 1 }]);
+    expect((await events(context)).filter((event) => event.type === 'hook.receipt')).toHaveLength(1);
+  });
+
+  it('rejects bad signatures, stale timestamps, unknown targets and invalid bodies', async () => {
+    const context = await bootHooks({ events: ['demand.created'] });
+    const body = receiptBody('JIRA-9999:created', 'JIRA-9999');
+
+    const badSignature = await postReceipt(context, 'http-example', body, { secret: 'wrong-secret' });
+    expect(badSignature.status).toBe(401);
+
+    const stale = await postReceipt(context, 'http-example', body, {
+      timestamp: '2000-01-01T00:00:00.000Z',
+    });
+    expect(stale.status).toBe(401);
+    expect(stale.body.error?.message).toContain('stale_timestamp');
+
+    const unknownTarget = await postReceipt(context, 'jira', body);
+    expect(unknownTarget.status).toBe(404);
+
+    const invalidBody = await postReceipt(context, 'http-example', { eventType: 'hook.receipt' });
+    expect(invalidBody.status).toBe(400);
+    const invalidJson = await postReceipt(context, 'http-example', undefined, { rawBody: '{' });
+    expect(invalidJson.status).toBe(400);
+
+    expect(queryDb(context, 'SELECT COUNT(*) AS total FROM hook_receipts')).toEqual([{ total: 0 }]);
+  });
+
+  it('records an unknown externalId without failing or advancing the stage (v1)', async () => {
+    const context = await bootHooks({ events: ['demand.created'] });
+    const demandId = await createDemand(context, 'R-4004 回执未知外部单');
+
+    const detailUrl = `/api/v1/demands/${demandId}`;
+    const settled = await waitFor(
+      async () => {
+        const detail = await apiRequest<DemandDetailResponse>(context.server.url, detailUrl, {
+          token: context.userToken,
+        });
+        return detail.body.stages.some((stage) => stage.status === 'waiting_human') ? detail.body : undefined;
+      },
+      { timeoutMs: 5_000, label: 'demand parked at G1', intervalMs: 10 },
+    );
+    const stagesBefore = settled.stages.map((stage) => `${stage.stageKey}:${stage.status}`).join('|');
+
+    const orphan = await postReceipt(
+      context,
+      'http-example',
+      receiptBody('EXT-ORPHAN:created', 'EXT-ORPHAN'),
+    );
+    expect(orphan.status, JSON.stringify(orphan.body)).toBe(200);
+    expect(orphan.body).toMatchObject({ accepted: true, duplicate: false, externalId: 'EXT-ORPHAN' });
+    const receiptEvent = await waitForEvent(context, 'hook.receipt', (event) => {
+      return event.data['externalId'] === 'EXT-ORPHAN';
+    });
+    expect(receiptEvent.data['linked']).toBe(false);
+
+    const after = await apiRequest<DemandDetailResponse>(context.server.url, detailUrl, {
+      token: context.userToken,
+    });
+    const stagesAfter = after.body.stages.map((stage) => `${stage.stageKey}:${stage.status}`).join('|');
+    expect(stagesAfter).toBe(stagesBefore);
   });
 });

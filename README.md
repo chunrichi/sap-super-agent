@@ -40,6 +40,7 @@ flowchart LR
 ```
 
 - **离线不派单，但不停工**：需要人的阶段只在人真正在线且工作区匹配时进入可领取池；服务端 AI 阶段 7×24 推进。
+- **多人在线、派发确定**：WS `task.offered` 只推给满足资格（角色/工作区/在线/并发）的执行器连接；每用户 `maxConcurrentPerUser`（默认 2，仅人工任务）；持租约者可把任务转交回池（审计 + 幂等，不锁定到人）；未绑定任务进通用任务箱，绑定任务只对打开对应目录的人可见；客户端断线重连按 `lastSeq` 补齐事件，`resync_required` 时全量拉取。
 - **服务端 AI 走 BYOK**：企业自有模型 Key（OpenAI 兼容 / DeepSeek / Azure，自部署/安全协议），不绑定 Copilot 订阅；VSCode 内的 Copilot Chat 只负责人机协作开发。
 - **SAP 端 ICF + MIME**：一个 ICF 节点同时提供 JSON API 与 SAP 内 Web 页面；认证走 SSO，v1 暂不建模细粒度权限。
 - **MCP 可选**：v1.1 可把控制平面能力暴露为 MCP tools，供其他 AI 客户端复用。
@@ -104,6 +105,18 @@ VSCode 扩展（任务客户端 + 本地能力宿主，不接管 Copilot 会话�
 1. VSCode 打开本仓库，`pnpm --filter sap-superagent-vscode run build` 后按 F5（或安装 VSIX）；
 2. 命令面板 → `SAP Super Agent: 连接控制平面`，粘贴 `pnpm dev` 打印的 user token（存 `SecretStorage`）；
 3. `绑定当前工作区` → 任务箱「可领取」领取任务 → `打开任务` 生成 `.sap-superagent/task/<taskId>/context.md`，供 Copilot Chat 用 `#file` 引用。
+4. 任务箱三组实时刷新（WS 推送，不等轮询）；「等待我回答」列出待审批与未读通知，点行即可通过/驳回或标记已读；切换工作目录会立即释放已持有任务回池。
+
+多执行器协作（同一控制平面、不同用户/工作区）与任务转交：
+
+```sh
+# 转交：持租约者把任务交回池子（targetRole 收窄角色池；targetUserId 只是审计/提示，不锁定）
+curl -s -X POST "http://127.0.0.1:3080/api/v1/tasks/<taskId>/transfer" \
+  -H "authorization: Bearer $EXECUTOR_TOKEN" -H 'content-type: application/json' \
+  -H 'idempotency-key: <uuid>' -d '{"targetUserId":"DEV002","comment":"请同事接手"}'
+```
+
+WS 事件流：`ws://127.0.0.1:3080/api/v1/events?token=<token>&after=<lastSeq>`；`task.offered` 只发给有资格领取的在线执行器连接，`user`/`admin` 连接只收事件流。
 
 其他命令：
 
@@ -119,7 +132,7 @@ pnpm cli doctor                                    # 环境自检：Node/pnpm/�
 
 ```sh
 pnpm check        # typecheck + eslint + 单测/集成测试 + contracts 快照
-pnpm e2e          # M1 纵向闭环 + 门禁审批通过/驳回/超时/stale + docs/009 #1/#2/#3/#10
+pnpm e2e          # M1 纵向闭环 + 门禁审批 + SAP 链路 + 多执行器派发（009 #1–#5/#8/#9/#16）
 pnpm eval:golden  # golden set 离线评测（fake provider 确定性输出 evals/report.json）
 pnpm build        # 所有包按依赖拓扑序构建（产物在 .gitignore 内）
 pnpm contract:gen # 从 protocol 重新生成 contracts/json-schema 与 examples

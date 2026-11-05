@@ -114,6 +114,7 @@ StageRun 就绪
 
 - **幂等**：`(stageRunId, attempt)` 唯一；重试不产生重复工件。
 - **质量门**：schema + checklist 都通过才算完成；上游工件更新时下游标 `stale` 并阻断推进；用 golden set 离线评测人工修改率，未达阈值只允许 `observe` 模式（见 [009-testing.md](009-testing.md)）。
+- **自主度（observe / auto）**：阶段模板可声明 `autonomy`。`observe` 阶段的产出作为草稿停在 `waiting_human`，由人工确认门禁放行后才进入下一阶段；`auto` 阶段在无门禁时直接推进。新模板的 server-AI 阶段默认 `observe`，只有在 `pnpm eval:golden` 报告中人工修改率低于 `evals/thresholds.json` 的阈值（默认 15%）且连续达标后，才建议把该阶段调成 `auto`——脚本只输出建议，不自动改模板。
 - **可复现**：记录模型、prompt 版本、输入工件 ID 与版本、温度等参数；同一输入可重跑对比。
 - **预算**：每需求/每阶段成本上限；超额暂停并转人工，不静默降级。BYOK 成本按 token/模型记账，可按团队/需求统计。
 - **数据边界**：BYOK 为自部署或已签安全协议，需求/工件外发无额外限制；工程上仍默认代码留在客户端（控制平面只存变更摘要与链接），凭据永不出客户端。
@@ -151,6 +152,7 @@ StageRun 就绪
 | ⑥ 知识归档 | server-ai | `knowledge_entry` | G5 发布确认（需求顾问/运维） |
 
 - "点 AI 生成"变成阶段自动执行；"确认/调整"变成 Gate 决策与工件新版本。
+- **实现落地**：六阶段在 [`templates/pdo.yaml`](../templates/pdo.yaml) 中以配置表达（stage key：`intake` / `requirement_analysis` / `dev_spec` / `dev_implementation` / `test_acceptance` / `knowledge_archive`；门禁 G1/G2/G5 = `consultant`/`ops`，G3 = `developer`，G4 = `requester`）。`default` 三阶段模板见 [`templates/default.yaml`](../templates/default.yaml)。
 - **"生成开发"的完成物是代码，不是文档**：阶段④以可评审/可激活的代码变更为准；服务端 AI 只提供建议或草稿，实现与验证发生在 VSCode。
 - "Teams 通知 + 人工 assign"退役，换成 `task.offered` + `claim` + 租约。
 - JIRA / CHARM / Confluence / Teams 只定义 Hook 契约（事件、payload、幂等键、重试、对账），不进阶段图。

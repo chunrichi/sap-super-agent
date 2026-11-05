@@ -117,6 +117,7 @@ Assignment 状态：`active → completed | released | expired`。
 - 门禁绑定 `(demandId, stageRunId, gateKey)`，并绑定**具体工件版本 `(artifactId, artifactVersion)`**：审批的对象是那一版内容，之后出现新版本时该 Approval 仍指向旧版本（旧版本被标 `stale` 时批准被拒绝）。
 - 同一门禁重复审批幂等：终态（`approved/rejected/withdrawn/expired`）后再决策返回 `409 conflict`，响应携带当前状态。
 - 审批人由模板声明的角色决定；角色枚举：`requester`（业务方）、`consultant`（需求顾问/PDO）、`developer`、`ops`。控制平面只做规则校验，身份来自 SAP 或控制平面账号。**M1 本地模式不建模细粒度权限**（HANDOFF §7）：用户/管理员 token 均可决策，`decidedBy` 记录实际操作人；`assignee=me` 返回本地待办。
+- **v1 实现说明（单角色门禁）**：协议 `gate` 只声明一个 `role`。任务书把 G3 描述为"consultant + developer 评审"，v1 以 `consultant` 作为 G3 的主审批角色，开发者的实现证据由 vscode 阶段完成判定（schema + checklist）与工件版本链体现；多角色会签留给后续版本，不为此扩展协议。
 - 到期：`expiresAt = createdAt + timeoutDays`，由 sweeper 周期检查（生产默认每小时；测试可注入时钟）。到期后 Approval 置 `expired`，阶段按失败重试规则开新 attempt，写 `approval.expired` 事件与通知；`withdrawn` 同理（不标记工件为 rejected）。
 - 通知：门禁请求、决策结果、过期、阶段转人工均写 `notifications` 表（`kind`、`requiredRole`、标题、正文、已读时间），`GET /notifications?state=unread` 读取；Teams 等外部渠道留待 Hook（H2 之后），不新增渠道。
 - 人工补救：`POST /admin/approvals/{id}/expire` 供 M1 运维强制过期卡住的门禁（等价于到期，写同样的事件与通知）。
@@ -145,7 +146,7 @@ Assignment 状态：`active → completed | released | expired`。
 | `gates` | `{gateKey, role, timeoutDays}` |
 
 - `executorKind ∈ {vscode, server-ai}`；`gate ∈ {none} | {gateKey, role}`，`none` 表示无人工门禁，是否自动推进由 `autonomy` 决定。
-- `autonomy ∈ {auto, observe}`（默认 `auto`，可省略）：`auto` = 按门禁规则自动推进；`observe` = 只生成草稿并停在 `waiting_human`，不自动进入下一阶段。`observe` 阶段若模板未声明门禁，服务端生成一条**确认门禁**（`gateKey=confirm:<stageKey>`，`requiredRole=consultant`），审批通过后推进。新模板的 `server-ai` 阶段按 golden set 阈值默认 `observe`（`evals/thresholds.json`；见 [009](009-testing.md)）。
+- `autonomy ∈ {auto, observe}`（默认 `auto`，可省略）：`auto` = 按门禁规则自动推进；`observe` = 只生成草稿并停在 `waiting_human`，不自动进入下一阶段（工件状态记 `in_review`，等待确认）。`observe` 阶段若模板未声明门禁，服务端生成一条**确认门禁**（`gateKey=confirm:<stageKey>`，`requiredRole=consultant`），审批通过后推进。新模板的 `server-ai` 阶段按 golden set 阈值默认 `observe`（`evals/thresholds.json`，人工修改率 ≥15% 即保持 observe；见 [009](009-testing.md)）。
 - `requiredRoles`：`vscode` 阶段自动创建 Task 时声明的领取角色（空表示不限）。
 - `checklist` 是可判定的验收断言 key，闭集：`sections_present`（输出工件的必填章节/字段齐全）、`inputs_referenced`（声明的上游工件存在且阶段记录的就是最新版本）、`not_stale`（上游无更新版本、输出工件未被标 stale）、`acceptance_covered`（需求每条验收标准在输出中有对应条目，结构化输出时生效）；未知 key 在加载模板时拒绝。阶段完成条件 = schema + checklist。
 - 同一模板内 stage key、gate key、output artifact kind 均唯一（保证一个 Demand 每种工件只有一条版本链）。
@@ -284,7 +285,7 @@ Assignment 状态：`active → completed | released | expired`。
 | --- | --- | --- | --- |
 | 需求来源 | `SourceAdapter`：`ingest(event)` / `writeBack(demand)` / `reconcile()` | 本地 REST、SAP ICF JSON + webhook | JIRA、ServiceNow |
 | 执行器 | 4.2 协议 | `vscode`、`server-ai` | CI、ABAP 传输、DSH session |
-| AI 阶段 | `AiStage`：`buildPrompt(ctx)` / `outputSchema` / `model` / `maxCostUsd` | 需求分析、开发说明、测试文档、归档摘要 | 更多模板 |
+| AI 阶段 | `AiStage`：`buildPrompt(ctx)` / `outputSchema` / `model` / `maxCostUsd` | 受理澄清、需求分析、开发说明、测试文档、知识归档（`packages/ai` 注册表，按 stage key 解析） | 更多模板 |
 | Hook 目标 | `HookTarget`：`event` / `payload(demand, artifact)` / `send()` / `idempotencyKey` | 契约见 [008-hooks.md](008-hooks.md)，v1 提供 `http` 示例 | JIRA、CHARM、Confluence、Teams |
 | 存储 | `Repository` / `ArtifactStore` / `EventStore` | SQLite + FS；Postgres 可选 | SAP HANA |
 | 身份 | `TokenValidator` | 本地签发 token | OIDC / SAP SSO |

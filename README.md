@@ -2,7 +2,7 @@
 
 > 面向 SAP 研发交付的 super-agent：需求记录在 SAP，编排在控制平面，编码在开发者身边的 VSCode，重复的文档工作由服务端 AI 主动完成。
 
-**状态：设计阶段（v0）。** 本仓库当前包含设计文档、调研材料与可交互演示；代码实现按 [路线图](docs/007-roadmap.md) 推进（H0 骨架进行中）。
+**状态：S0（walking skeleton）与 S1（门禁与模板，M1 本地模式）已完成，S2（SAP 需求系统）进行中。** 代码按 [路线图](docs/007-roadmap.md) 推进；`pnpm check` / `pnpm e2e` / `pnpm eval:golden` 为当前验收命令。
 
 **设计演示**：[demo/index.html](demo/index.html) — 10 幕 HTML 动画，浏览器打开即可（自动播放，支持 ← → / 空格 / 重播）。
 
@@ -44,6 +44,7 @@ flowchart LR
 - **SAP 端 ICF + MIME**：一个 ICF 节点同时提供 JSON API 与 SAP 内 Web 页面；认证走 SSO，v1 暂不建模细粒度权限。
 - **MCP 可选**：v1.1 可把控制平面能力暴露为 MCP tools，供其他 AI 客户端复用。
 - **授权先于自主**：每个阶段有明确门禁，AI 只做被授权的范围；所有状态变化进入不可变事件日志。
+- **门禁与模板是一等公民**：`templates/default.yaml`（3 阶段 G1/G3/G4）与 `templates/pdo.yaml`（6 阶段 G1–G5）是**配置**不是代码分支；阶段完成 = 输出 schema + checklist 断言；工件不可变、版本可追溯，上游出新版本会把下游工件标 `stale` 并阻断门禁；`pnpm eval:golden` 离线评测人工修改率并给出 auto / observe 建议（脚本不改模板）。
 - **三个部署模式**：M1 本地一条命令、M2 团队独立服务、M3 SAP 受限宿主（需求/审批/AI 批处理在 SAP，交互式 agent 不在 ABAP）。
 
 ## 文档
@@ -84,7 +85,19 @@ curl -s -X POST http://127.0.0.1:3080/api/v1/demands \
   -d '{"title":"R-2041 取数逻辑","description":"按销售组织汇总开票金额","acceptanceCriteria":["金额与 MARA 一致"],"requester":{"userId":"REQ001"}}'
 ```
 
-fake provider 下数秒内 `GET /api/v1/demands/{id}` 会包含 `requirement_analysis` 工件；S0 用 `POST /api/v1/admin/tasks` 手建开发任务（S1 起由模板自动产生）。
+fake provider 下数秒内 `GET /api/v1/demands/{id}` 会包含 `requirement_analysis` 工件并停在 G1 门禁（默认 3 阶段模板）。门禁是一等公民：
+
+```sh
+# 我的待审批（默认模板：G1 需求顾问、G3 开发评审、G4 业务验收）
+curl -s "http://127.0.0.1:3080/api/v1/approvals?assignee=me" -H "authorization: Bearer $TOKEN"
+# 通过 / 驳回：{ "decision": "approve" | "reject", "comment": "..." }
+curl -s -X POST "http://127.0.0.1:3080/api/v1/approvals/<approvalId>/decisions" \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{"decision":"approve"}'
+# 模板是只读配置；指定模板建需求用 body.templateId（如 "pdo"）
+curl -s http://127.0.0.1:3080/api/v1/templates -H "authorization: Bearer $TOKEN"
+```
+
+G1 通过后服务端按模板自动生成 vscode 开发任务（`GET /api/v1/tasks` 可领取），`POST /api/v1/admin/tasks` 仅保留给 S0 兼容与运维手建。`POST /api/v1/demands/{id}/artifacts` 用于人工确认/调整工件（产生新版本，不覆盖历史）。
 
 VSCode 扩展（任务客户端 + 本地能力宿主，不接管 Copilot 会话）：
 
@@ -106,7 +119,8 @@ pnpm cli doctor                                    # 环境自检：Node/pnpm/�
 
 ```sh
 pnpm check        # typecheck + eslint + 单测/集成测试 + contracts 快照
-pnpm e2e          # M1 纵向闭环 + docs/009 失败场景 #1/#2/#3/#10
+pnpm e2e          # M1 纵向闭环 + 门禁审批通过/驳回/超时/stale + docs/009 #1/#2/#3/#10
+pnpm eval:golden  # golden set 离线评测（fake provider 确定性输出 evals/report.json）
 pnpm build        # 所有包按依赖拓扑序构建（产物在 .gitignore 内）
 pnpm contract:gen # 从 protocol 重新生成 contracts/json-schema 与 examples
 ```

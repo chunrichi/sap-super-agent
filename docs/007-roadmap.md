@@ -27,6 +27,8 @@
 
 ### S1 门禁与模板
 
+> **状态（2026-11-05）：H1 已完成**（分支 `feat/h1-gates`）。交付：Approval 状态机 + 门禁 API（通过/驳回/撤回/超时）、`default` 3 阶段（G1/G3/G4）与 `pdo` 6 阶段（G1–G5）模板、`templateId@version` 固定、工件不可变版本/supersede/stale 传播、schema+checklist 完成判定、autonomy auto/observe、golden set 评测框架（`pnpm eval:golden`，report 确定性入库）。验证：`pnpm check`、`pnpm e2e`（审批通过/驳回/超时/stale + docs/009 #1/#2/#3/#10）、`pnpm eval:golden`。
+
 - **目标**：让"人工确认"成为一等公民，并支持 PDO 六阶段预设。
 - **交付**：Approval 状态机、阶段模板（`default` 3 阶段 / `pdo` 6 阶段，见 `templates/`）、工件版本与 supersede、退回修改、审批通知（先 Web / CLI 输出，后 Teams Hook）、**golden set 离线评测脚本**（20–30 条脱敏 PDO 需求）。
 - **验收**：审批前阶段阻塞、审批后推进；退回后生成新版本而不是覆盖；模板切换不影响进行中需求；server-ai 阶段完成需通过 schema + checklist；评测报告中人工修改率与自主度阈值可判定。

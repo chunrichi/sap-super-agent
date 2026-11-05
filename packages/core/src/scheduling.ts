@@ -64,6 +64,13 @@ export interface ClaimEligibilityInput {
   activeAssignmentsForExecutor: number;
   /** Active human tasks for the same user on the same demand. */
   activeAssignmentsForSameDemand: number;
+  /** Active human tasks held by this executor's user (rule 6, S3). */
+  activeAssignmentsForUser: number;
+  /**
+   * Per-user cap for human (`vscode`) tasks (rule 6, docs/003 §3, S3).
+   * Server-wide setting; the server defaults it to 2.
+   */
+  maxConcurrentPerUser: number;
   /** Server-wide pause switch (`off` autonomy / maintenance). */
   globallyPaused: boolean;
 }
@@ -122,6 +129,11 @@ export function evaluateClaimEligibility(input: ClaimEligibilityInput): ClaimEli
     );
     if (presence !== 'online' && presence !== 'busy') reasons.push('executor_offline');
     if (input.activeAssignmentsForSameDemand >= 1) reasons.push('same_demand_already_held');
+    // Rule 6 only constrains human work: server-ai executors run 7x24 under
+    // their own per-executor `maxConcurrent` (docs/003 §3).
+    if (input.activeAssignmentsForUser >= input.maxConcurrentPerUser) {
+      reasons.push('user_at_capacity');
+    }
   }
 
   if (input.activeAssignmentsForExecutor >= (executor.maxConcurrent || DEFAULT_MAX_CONCURRENT)) {
@@ -176,6 +188,10 @@ export interface OfferInput {
   lastHeartbeatAt: string | null;
   activeAssignmentsForExecutor: number;
   activeAssignmentsForSameDemand: number;
+  /** Active human tasks held by the executor's user (rule 6, S3). */
+  activeAssignmentsForUser: number;
+  /** Per-user cap for human tasks (default 2, docs/003 §3). */
+  maxConcurrentPerUser: number;
   globallyPaused: boolean;
 }
 
@@ -193,6 +209,8 @@ export function shouldOfferTask(input: OfferInput): boolean {
     lastHeartbeatAt: input.lastHeartbeatAt,
     activeAssignmentsForExecutor: input.activeAssignmentsForExecutor,
     activeAssignmentsForSameDemand: input.activeAssignmentsForSameDemand,
+    activeAssignmentsForUser: input.activeAssignmentsForUser,
+    maxConcurrentPerUser: input.maxConcurrentPerUser,
     globallyPaused: input.globallyPaused,
   }).eligible;
 }

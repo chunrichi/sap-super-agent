@@ -39,6 +39,7 @@ import {
   writeArtifactBytes,
 } from '../../artifact-store.js';
 import {
+  countActiveAssignmentsForUser,
   getActiveAssignmentForTask,
   getActiveAssignmentForTaskAndExecutor,
   insertAssignment,
@@ -295,6 +296,12 @@ export function registerTaskRoutes(app: FastifyInstance, ctx: ServerContext): vo
           lastHeartbeatAt: record.lastHeartbeatAt,
           activeAssignmentsForExecutor: activeAssignments.length,
           activeAssignmentsForSameDemand: activeForSameDemand,
+          // --- S3: per-user cap for human tasks (docs/003 §3 rule 6) ---
+          activeAssignmentsForUser: countActiveAssignmentsForUser(
+            ctx.db,
+            record.executor.user,
+          ),
+          maxConcurrentPerUser: ctx.config.maxConcurrentPerUser,
           globallyPaused: false,
         });
         if (!eligibility.eligible) {

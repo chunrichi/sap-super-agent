@@ -71,6 +71,8 @@ describe('.env parsing', () => {
     expect(fromEnv.port).toBe(3099);
     expect(fromEnv.templatesDir).toBe(TEMPLATES_DIR);
     expect(fromEnv.wsPingMs).toBe(20_000);
+    // S3: per-user concurrency cap defaults to 2 (docs/003 §3 rule 6).
+    expect(fromEnv.maxConcurrentPerUser).toBe(2);
 
     const explicit = resolveConfig({
       stateDir,
@@ -78,9 +80,14 @@ describe('.env parsing', () => {
       port: 0,
       templatesDir: resolve(TEMPLATES_DIR),
       wsPingMs: 50,
+      maxConcurrentPerUser: 1,
     });
     expect(explicit.port).toBe(0);
     expect(explicit.wsPingMs).toBe(50);
+    expect(explicit.maxConcurrentPerUser).toBe(1);
+    expect(() => resolveConfig({ stateDir, env, maxConcurrentPerUser: 0 })).toThrow(
+      /maxConcurrentPerUser/,
+    );
   });
 
   it('startServer honours the .env AI provider (healthz reports it)', async () => {

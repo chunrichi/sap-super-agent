@@ -8,6 +8,33 @@
 
 ## [Unreleased]
 
+### Added
+
+- **SAP 内 Web（MIME `/zsa/ui`）重构**：hash 路由（`#/list`、`#/demand/<id>`、`#/new`）、列表搜索/状态筛选/
+  待我确认·待我验收、结果计数与加载/空/错误态、详情（元信息、工件表、待审批门禁卡片、审批历史、事件时间线）、
+  新建需求（模板选择）、Fiori 风格响应式布局、focus-visible/`aria-live`/会话过期 banner。
+- **SAP ICF API**：列表/详情响应新增 `currentUser`（ICF 会话用户）；`approvals[]` 新增 `decidedAt`；
+  审批 POST 的 `decidedBy` 变为可选（缺省 `sy-uname`）。`ZCL_ZSA_HTTP_HANDLER` ABAP Unit 增至 **7/7**。
+- **本地预览**：`pnpm sap:ui:preview`（`scripts/sap-ui-preview.mjs`：静态页 + mock ICF API；
+  `--scenario default|empty|expired|pending-row`，默认 `:4173`；仅开发用，不进 MIME/发布物）。
+- **VSCode 任务箱界面**：分组/优先级/审批/通知 codicon、任务状态与门禁角色/通知类型中文化、空分组占位行、
+  `viewsWelcome`（未连接 → 连接控制平面；已连接空闲 → 领取任务）、`sapSuperAgent.connected` 上下文键、
+  无障碍标签、状态栏 tooltip 待审批门禁数、命令反馈统一带下一步动作。
+
+### Changed
+
+- SAP 内审批门禁：页面优先使用 `approvals[]` 中的 `state=pending` 行；控制平面尚未把 pending 审批投影到
+  SAP 时，按 `STATUS`（待确认/待验收）+ `STAGE_KEY` + 模板 stage→gate 映射推断；同一门禁已有决定后不再
+  重复提供操作（防重复审批），审批历史过滤旧噪声行（如 `GATE`）并去重。
+- 审批记录以 SAP Web 为真相：控制平面回写只在带完整 `gateKey` 时投影审批，并对同需求+门禁复用/更新已有行。
+
+### Fixed
+
+- SAP 回写 `artifact.approved/rejected` 不再产生 `gate_key='GATE'`、`decided_by` 为空的噪声审批行
+  （真实事件不带 gateKey/decidedBy）。
+- `pnpm sap:check` 在线模式只校验 `sap/` 受控源码，不再扫描 `tmp/` 下 `abap pull` 的 scratch 副本
+  （避免本地实验被误判为 CI 失败）。
+
 ## [1.0.0] - 2026-11-05
 
 首个发布版本。覆盖路线图 S0–S5 Phase A（本地闭环、门禁/模板/golden、SAP 需求系统、多人在线派发、

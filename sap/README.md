@@ -5,7 +5,7 @@
 
 > **决策（2026-11-05，用户）**：Phase B 使用**本地包 `$ZSA`**（`$` 前缀本地包，对象仅在测试系统生效、**不需要 TR**）；全部用 abap-cli 实现；abapGit 暂不考虑（`.abapgit.xml` 保留但不再维护/验收）。
 >
-> **状态（2026-11-05，Phase B 真机落地）**：测试系统上已创建并激活 6 张 DDIC 表、3 个类（含 ABAP Unit）、ICF 节点 `/sap/zsa`、MIME `/zsa/ui` 三个静态资源、后台 job 程序 `ZSA_OUTBOX_PUSH`；`abap validate:aff` 18/18、`pnpm sap:check` 离线/在线（`SA_SAP_CHECK_ONLINE=1`）全绿、ABAP Unit 6/6。
+> **状态（2026-11-06，Phase B 真机落地 + Web UI 完善）**：测试系统上已创建并激活 6 张 DDIC 表、3 个类（含 ABAP Unit）、ICF 节点 `/sap/zsa`、MIME `/zsa/ui` 三个静态资源、后台 job 程序 `ZSA_OUTBOX_PUSH`；`abap validate:aff` 20/20、`pnpm sap:check` 离线/在线（`SA_SAP_CHECK_ONLINE=1`）全绿、ABAP Unit **10/10**（outbox 3 + handler 7）。MIME 前端已在测试系统用 `abap mime push` 更新（列表/详情/新建、待审批门禁与审批历史；本地预览 `pnpm sap:ui:preview`）。
 > 端到端两条验收（SAP→控制平面 5 分钟入单、审批 1 分钟回写）与 ICF `/api/health` 200 仍需人工输入：控制平面可被测试系统访问（M2/内网隧道）、HMAC secret 注入方式、Basis SSO/服务账号。详见下文「验收结果与 blocked 项」。
 >
 > **状态（2026-11-05，S5 Phase B 部分落地）**：新增 S5/M3 批处理 AI 执行器对象 `ZCL_ZSA_AI_BATCH`（+ABAP Unit）与 `ZSA_AI_BATCH_RUN` 已在测试系统 `$ZSA`（本地包，无 TR）**创建并激活**；`pnpm sap:check` 离线绿（必需文件 29 个、`abap validate:aff` 20/20、`abap check content` 10 个 ABAP 文件）；真机 `abap check syntax` 通过、`abap test ZCL_ZSA_AI_BATCH` **15/15**、`abap pull --active` 回拉与仓库源码一致（仅 SAP 侧 CRLF / 文件末尾换行差异）。**仍 blocked（人工输入）**：`ZSA_CFG` 业务键写入（`AI_GATEWAY_URL` 等）、SM36/bgRFC 调度窗口、控制平面可达 + HMAC/服务账号、企业 AI 网关 URL/model/key 与出口策略、端到端 M3 证据。
@@ -48,11 +48,27 @@ abap-cli `create`/`push` 消费：
 | `ZSA_CFG` | TABL | active（EXCLASS=4） | 同上 |
 | `ZCL_ZSA_JSON` | CLAS | active（5 个 include 全 active） | `abap inspect --activation` ok=true |
 | `ZCL_ZSA_EVENT_PUSH` | CLAS | active + ABAP Unit 3/3 | `abap test` pass；testclasses 已推送 |
-| `ZCL_ZSA_HTTP_HANDLER` | CLAS | active + ABAP Unit 3/3 | 同上 |
+| `ZCL_ZSA_HTTP_HANDLER` | CLAS | active + ABAP Unit 7/7 | 路由/回写白名单/时间戳 + `currentUser`/`decidedAt`/默认审批人 |
 | `ZSA_DDIC_BOOTSTRAP` | PROG | active（一次性 workaround，保留） | 见下节 |
 | ICF 节点 `/sap/zsa` | HTTP（SICF `ZSA`） | 已创建；handler 绑定 | `ICFHANDLER`：ICF_NAME=ZSA / ICFHANDLER=ZCL_ZSA_HTTP_HANDLER；`abap pull ZSA --type HTTP` 成功 |
-| MIME `/zsa/ui` | MIME folder | 已创建；3 个文件上传 | `abap mime create/push` 返回 uploaded=3 |
+| MIME `/zsa/ui` | MIME folder | 已创建；3 个文件上传（2026-11-06 已 push 重构版） | `abap mime create/push` 返回 uploaded=3 |
 | `ZSA_OUTBOX_PUSH` | PROG | active（job 入口，SM36 人工调度） | `abap create/push` activated=true |
+
+## MIME 前端 `/zsa/ui`（2026-11-06 重构）
+
+纯静态 SPA（原生 JS，无构建、无 CDN、无依赖），由 ICF 节点在 `/sap/zsa/ui/` 提供；只调用同节点
+`/sap/zsa/api/*`，审批/需求真相仍在 SAP 表（`ZSA_APPROVAL`/`ZSA_DEMAND`），控制平面只回写投影。
+
+- 页面：需求列表（搜索、状态筛选、待我确认/待我验收、计数、加载/空/错误态、键盘可达）、
+  需求详情（元信息、描述、验收标准、工件表、待审批门禁卡片、审批历史、事件时间线）、
+  新建需求（校验、模板选择）。
+- 路由：`#/list`、`#/demand/<id>`、`#/new`（前进/后退/刷新/深链可用）。
+- 审批：SAP Web 是审批真相；页面优先用 `approvals[]` 中 `state='pending'` 的行，控制平面尚未回写
+  pending 时按 `STATUS`（待确认/待验收）+ `STAGE_KEY` + 模板 stage→gate 映射**推断**当前门禁；
+  审批人缺省即 ICF 登录用户（`sy-uname`），通过/驳回均写 `ZSA_APPROVAL` 并发 outbox 事件。
+- 本地预览（不连 SAP）：`pnpm sap:ui:preview`（`scripts/sap-ui-preview.mjs`，静态服 + mock ICF API，
+  `--port` 默认 4173、`--scenario default|empty|expired|pending-row`）；该脚本不进 MIME/发布物。
+- 部署：`abap mime push sap/ui --root /zsa/ui --yes`（本地包 `$ZSA`，无 TR；返回 uploaded=3）。
 
 ## 为什么有 `ZSA_DDIC_BOOTSTRAP`（abap-cli 2.2.0 DDIC create 缺陷）
 
@@ -236,11 +252,11 @@ checklist、ledger、工件与门禁全部留在控制平面。SAP 不拼 prompt
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/sap/zsa/api/demands` | 列表（`status` / `changedSince` / `q`） |
-| GET | `/sap/zsa/api/demands/{id}` | 详情 + 工件 + 审批 + 时间线 |
+| GET | `/sap/zsa/api/demands` | 列表（`status` / `changedSince` / `q`）；响应含 `currentUser`（ICF 会话用户 `sy-uname`） |
+| GET | `/sap/zsa/api/demands/{id}` | 详情 + 工件 + 审批 + 时间线；响应含 `currentUser`，`approvals[]` 含 `decidedAt` |
 | POST | `/sap/zsa/api/demands` | Web 页面创建需求（写需求 + `demand.submitted` outbox） |
 | PATCH | `/sap/zsa/api/demands/{id}` | 控制平面回写：`STATUS/STATUS_TEXT/STAGE_KEY` + 工件元数据（字段白名单，`If-Match` = `VERSION`） |
-| POST | `/sap/zsa/api/demands/{id}/approvals` | 审批决策（写 `ZSA_APPROVAL` + `artifact.approved/rejected` outbox） |
+| POST | `/sap/zsa/api/demands/{id}/approvals` | 审批决策（写 `ZSA_APPROVAL` + `artifact.approved/rejected` outbox）；`decidedBy` 可选，缺省取 `sy-uname`；响应 201 含 `approval`/`demand` |
 | GET | `/sap/zsa/api/health` | 探活 |
 | GET | `/sap/zsa/ui/*` | MIME 前端，默认回落 `index.html` |
 
@@ -267,7 +283,7 @@ checklist、ledger、工件与门禁全部留在控制平面。SAP 不拼 prompt
 测试类以 `.clas.testclasses.abap` 与主类同目录（abap-cli `validate:aff` 识别为可选 companion）：
 
 - `ZCL_ZSA_EVENT_PUSH`：退避序列 1/5/30/300/1800、签名格式（`sha256=` + 64 位小写 hex）。
-- `ZCL_ZSA_HTTP_HANDLER`：路由分类、回写白名单、ISO⇄TIMESTAMPL 往返。
+- `ZCL_ZSA_HTTP_HANDLER`：路由分类、回写白名单、ISO⇄TIMESTAMPL 往返、`current_user`（会话用户）、`resolve_decided_by`（缺省/显式）、`current_user_json` 报文片段。
 - **`ZCL_ZSA_AI_BATCH`（S5）**：control plane next/claim JSON 映射（job payload）、OpenAI 兼容网关
   request/response 映射、result succeeded/failed 报文体（prompt 不进入 failed 报文）、HMAC RFC 4231
   已知向量与 `X-SA-*` 头构建、control plane 409/401/5xx 分类、网关 4xx/429/5xx/超时分类、
@@ -277,7 +293,7 @@ checklist、ledger、工件与门禁全部留在控制平面。SAP 不拼 prompt
 
 ```sh
 abap test ZCL_ZSA_EVENT_PUSH --json     # 3 methods / 3 passed（H2-B 实测）
-abap test ZCL_ZSA_HTTP_HANDLER --json   # 3 methods / 3 passed（H2-B 实测）
+abap test ZCL_ZSA_HTTP_HANDLER --json   # 7 methods / 7 passed（2026-11-06 实测，含会话用户/审批人缺省）
 abap test ZCL_ZSA_AI_BATCH --json       # 15 methods / 15 passed（S5 Phase B 实测）
 ```
 
@@ -287,7 +303,7 @@ abap test ZCL_ZSA_AI_BATCH --json       # 15 methods / 15 passed（S5 Phase B �
 
 1. 6 张 DDIC 表 + 3 个类（含 testclasses）+ ICF 节点 + MIME 目录/资源 + job 程序均创建并激活；
    `abap check syntax --all` 与 `SA_SAP_CHECK_ONLINE=1 pnpm sap:check` 全绿。
-2. `abap test` ABAP Unit 6/6 通过（outbox 退避 / HMAC 头 / 状态映射 / handler 路由）。
+2. `abap test` ABAP Unit **10/10** 通过（outbox 退避 / HMAC 头 / 状态映射 / handler 路由 + 会话用户/审批人缺省/决定时间）。
 3. ICF 节点 HTTP 层可达：`GET /sap/zsa/api/health` 返回 **401**（服务已挂载、按设计要求登录），
    而 `/sap/zsa/ui/index.html` 同样 401；无凭据时无法读取 200 响应体（见 blocked 项）。
 

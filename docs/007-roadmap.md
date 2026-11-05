@@ -65,7 +65,7 @@
 > `hook.attempted/delivered/dead` 事件、发送前信封 schema 校验、取消语义）；`GET /hooks` + `POST /hooks/{id}/replay`（Idempotency-Key 幂等）；
 > 入站回执 `POST /hooks/{target}/receipt`（迁移 v6 `hook_receipts`，验签/时间窗/重复幂等/未知 externalId 只记录，v1 只记录不推进阶段）；
 > `pnpm hooks:reconcile`（两类差异、只报告不修复）；`examples/hooks/` 四个占位适配器（JIRA/CHARM/Confluence/Teams，只配置样例）。
-> 验证：`pnpm check`（**437 tests**）、`pnpm e2e`（**16/16，4.02s**，新增通用 Hook 全链路）、`pnpm build`、`pnpm hooks:reconcile`；docs/009 #11 Hook 侧断言见 testkit e2e。
+> 验证：`pnpm check`（**438 tests**，contract 47 schemas / 7 examples / 22 routes）、`pnpm e2e`（**16/16，4.07s**，新增通用 Hook 全链路）、`pnpm build`、`pnpm hooks:reconcile`（真实 state 冒烟见 [handoffs/STATUS.md](../handoffs/STATUS.md)）；docs/009 #11 Hook 侧断言见 testkit 集成/e2e。
 
 - **目标**：PDO 的中间步骤有正式入口。
 - **交付**：Hook 契约（事件名、payload schema、幂等键、重试/死信）、`http` 示例目标、JIRA / CHARM / Confluence / Teams 四个占位适配器（文档 + 配置样例，不实现业务逻辑）、出站队列与重放命令。

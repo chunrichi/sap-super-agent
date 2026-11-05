@@ -139,6 +139,7 @@ hooks:
 | `SA_HOOKS_RETRY_MAX_MS` | `300000` | 退避上限（5min） |
 | `SA_HOOKS_TIMEOUT_MS` | `10000` | 单次 HTTP 超时 |
 
+- 首次启动且尚无入队游标时，队列会从事件日志起点补发匹配该 Hook `events` 的历史事件（至少一次、不静默丢事件）；生产首次启用 Hook 前应确认历史事件是否需要对外投递，不需要时先在该状态目录上启用一次再清理 outbox/游标。
 - 出站队列复用 v1/v4 的 `outbox` 表：`target = 'hook:<id>'`、`id = '<eventId>:<hookId>'`（重扫幂等），payload 存信封 JSON；`status ∈ PENDING/SENT/DEAD/CANCELLED`，`attempts/next_attempt_at/last_error/sent_at/recent` 由 S4 worker 维护。S4 worker 与 SAP writeback 各扫各的 target，互不影响。
 - 管理端点：`GET /hooks`（admin，outbox 深度 + `lastError` + 最近一次尝试摘要）、`POST /hooks/{id}/replay`（admin + `Idempotency-Key`，按 `eventId` 重放死信/已发事件，保持 `idempotencyKey` 不变）。同一 `Idempotency-Key` 的重复 replay 返回缓存响应：不重复投递、不重复写 `hook.delivered`；用新 key 显式重放已发事件会再 POST 同一 `idempotencyKey`，目标按幂等键去重、不会重复建单，每次成功投递各记一条 `hook.delivered`。见 003 §4.7。
 - 不做 pause/resume、不做 UI、不默认发聊天通知。

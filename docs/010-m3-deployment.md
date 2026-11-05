@@ -775,6 +775,8 @@ requeue 语义（与 [003 §4.8.4](003-domain-and-protocol.md#48-sap-批处理-a
 
 > Phase B 只连测试系统；**不自动激活到生产**、不提交密钥/地址/`.env`、不记录真实 TR。若输入缺失按 blocked 记录（见 §9.3），不要用伪造数据充数。
 
+> **2026-11-05 执行进展（Phase B 部分完成）**：§9.3 第 5 项已满足（`abap doctor` + `abap profile test test`：TLS/auth/ADT/ICF 全 ok，只连测试系统）。**B1、B2 已完成**：`ZCL_ZSA_AI_BATCH`（含 testclasses）与 `ZSA_AI_BATCH_RUN` 已在 `$ZSA`（本地包，无 TR）创建并激活；`abap check syntax` 通过；`abap test ZCL_ZSA_AI_BATCH` **15/15**；`abap pull --active` 回拉与仓库源码一致（仅 SAP 侧 CRLF / 文件末尾换行差异）；`SA_SAP_CHECK_ONLINE=1 pnpm sap:check` → 6 pass / 0 skip。首次真机单测暴露 2 个**测试自身**断言错误（ABAP `find()` 未命中返回 `-1`，断言误写 0），已修复（main `bd5ff61`）。**B3–B10 仍 blocked**：缺 §9.3 第 1–4 项输入（控制平面可达/HMAC/服务账号、SM36 窗口、企业 AI 网关），未伪造证据；完整命令与输出见 `handoffs/STATUS.md`「S5 Phase B 进展」。
+
 ### 9.3 Phase B 人工输入清单（blocked 判据）
 
 | # | 输入 | 缺什么会卡住 | 提供方 |
@@ -786,6 +788,8 @@ requeue 语义（与 [003 §4.8.4](003-domain-and-protocol.md#48-sap-批处理-a
 | 5 | 测试系统（S/4HANA，profile `test`）可达、`abap doctor` 通过 | 所有 SAP 侧步骤 | 用户/Basis |
 
 任一缺失：记录 blocked 与所需输入，Phase A 仍可交付；不要伪造真机结果。
+
+> 2026-11-05：第 **5** 项已满足（测试系统可达、`abap doctor`/`profile test` 通过），B1/B2 已完成；第 **1–4** 项仍缺失，B3–B10 blocked。
 
 ## 10. 已知限制
 

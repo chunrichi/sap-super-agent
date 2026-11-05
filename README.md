@@ -2,7 +2,7 @@
 
 > 面向 SAP 研发交付的 super-agent：需求记录在 SAP，编排在控制平面，编码在开发者身边的 VSCode，重复的文档工作由服务端 AI 主动完成。
 
-**状态：S0–S4 与 H2（SAP 需求系统）已完成并合入 `main`（S4 = Hook 契约 + `http` 示例目标，PR #10）；S5/M3（SAP 批处理 AI 阶段）Phase A 已交付（分支 `feat/s5-sap-hosted`，未合入），Phase B 真机仍 blocked（缺控制平面可达/HMAC/服务账号/SM36/企业 AI 网关输入，见 [docs/010 §9.3](docs/010-m3-deployment.md#93-phase-b-人工输入清单blocked-判据)）。** 代码按 [路线图](docs/007-roadmap.md) 推进；`pnpm check` / `pnpm e2e` / `pnpm build` / `pnpm sap:check` / `pnpm contract:check` 为当前验收命令。
+**状态：S0–S4 与 H2（SAP 需求系统）已完成并合入 `main`（S4 = Hook 契约 + `http` 示例目标，PR #10）；S5/M3（SAP 批处理 AI 阶段）Phase A 已合入 `main`（PR #13）；Phase B 部分完成（测试系统上 `ZCL_ZSA_AI_BATCH`/`ZSA_AI_BATCH_RUN` 已激活、ABAP Unit 15/15），其余仍 blocked（缺控制平面可达/HMAC/服务账号/SM36/企业 AI 网关输入，见 [docs/010 §9.3](docs/010-m3-deployment.md#93-phase-b-人工输入清单blocked-判据)）。** 代码按 [路线图](docs/007-roadmap.md) 推进；`pnpm check` / `pnpm e2e` / `pnpm build` / `pnpm sap:check` / `pnpm contract:check` 为当前验收命令。
 
 **设计演示**：[demo/index.html](demo/index.html) — 10 幕 HTML 动画，浏览器打开即可（自动播放，支持 ← → / 空格 / 重播）。
 
@@ -178,6 +178,7 @@ curl -s -X POST http://127.0.0.1:3080/api/v1/admin/sap/ai-jobs/<jobId>/requeue \
 - 协议：[003 §4.8](docs/003-domain-and-protocol.md)；部署/网络/配置/密钥/数据边界/runbook/验收 checklist：[010 M3 部署与运维](docs/010-m3-deployment.md)；SAP 对象与 abap-cli 命令：[sap/README.md](sap/README.md)。
 - Phase A 离线验证：`pnpm e2e` 的 `sap-hosted` 用例用进程内 `FakeSapAiBatch` + `FakeAiGateway` 跑通"无开发者在线"全链路；真机 Phase B 依赖输入缺失时按 blocked 记录，不使用伪造数据。
 - 数据边界：控制平面不持有 AI 网关 key；prompt/输出只在"控制平面 → SAP → 内网网关"路径传输；SAP 与控制平面日志不落正文。
+- Phase B 进展（2026-11-05）：SAP 侧 `ZCL_ZSA_AI_BATCH`/`ZSA_AI_BATCH_RUN` 已在测试系统创建并激活，`abap check syntax` 通过、ABAP Unit **15/15**、`SA_SAP_CHECK_ONLINE=1 pnpm sap:check` 6 pass；控制平面/网关/SM36 输入仍缺，端到端 blocked（[STATUS「S5 Phase B 进展」](handoffs/STATUS.md)）。
 
 开发与验收门禁：
 

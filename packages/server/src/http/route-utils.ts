@@ -25,6 +25,8 @@ export function publish(ctx: ServerContext): (events: readonly EventEnvelope[]) 
       const isNewTask = event.type === 'task.created';
       const isPooledTask =
         event.type === 'task.released' ||
+        // --- S3: a transferred task is back in the pool (docs/003 §2.3) ---
+        event.type === 'task.transferred' ||
         (event.type === 'task.updated' && event.data['state'] === 'pending');
       if (!isNewTask && !isPooledTask) continue;
       const task = getTask(ctx.db, event.subject.id);

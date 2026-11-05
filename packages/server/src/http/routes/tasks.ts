@@ -17,15 +17,19 @@ import {
   taskContextResponseSchema,
   taskDetailResponseSchema,
   taskStateSchema,
+  transferTaskBodySchema,
+  transferTaskResponseSchema,
   type Artifact,
   type ArtifactVersion,
   type Assignment,
   type StageRun,
   type Task,
   type TaskContext,
+  type TaskTransfer,
 } from '@sap-superagent/protocol';
 import {
   buildTaskContextMarkdown,
+  canReturnTaskToPool,
   canTransitionStageRun,
   canTransitionTask,
   evaluateClaimEligibility,
@@ -56,9 +60,10 @@ import {
   updateArtifact,
 } from '../../db/artifacts.js';
 import { getDemand } from '../../db/demands.js';
-import { getExecutor } from '../../db/executors.js';
+import { getExecutor, listExecutorsByUser } from '../../db/executors.js';
 import { getStageRun, updateStageRun } from '../../db/stages.js';
 import { addLastHolder, getTask, listTasksByState, updateTask } from '../../db/tasks.js';
+import { insertTaskTransfer } from '../../db/task-transfers.js';
 import { writeTransaction, type TransactionContext } from '../../db/transaction.js';
 import {
   badRequest,
@@ -649,6 +654,138 @@ export function registerTaskRoutes(app: FastifyInstance, ctx: ServerContext): vo
       });
       return sendValidated(reply, releaseTaskResponseSchema, {
         task,
+        serverTime: nowIso(ctx),
+      });
+    },
+  );
+
+  // --- S3: transfer a held task back to the pool (docs/003 §2.3/§4.2) ------
+  // The caller must hold the live lease. `targetRole` explicitly narrows the
+  // role pool (requiredRoles=[role]); `targetUserId` is an audit/visibility
+  // hint only — the task is NOT locked to that user (HANDOFF invariant #4).
+  app.post(
+    '/api/v1/tasks/:id/transfer',
+    async (request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
+      const claims = requireExecutor(ctx, request);
+      const taskId = paramId(request);
+      const body = parseInput(transferTaskBodySchema, request.body ?? {}, 'transfer body');
+      const nowMs = ctx.clock();
+      const result = writeTransaction(ctx.db, publish(ctx), (tx) => {
+        const lease = requireActiveLease(ctx.db, taskId, claims.executorId, nowMs);
+        if (!canReturnTaskToPool(lease.task.state)) {
+          throw invalidState(`cannot transfer task ${taskId} from ${lease.task.state}`);
+        }
+        const fromUserId = lease.assignment.userId ?? claims.sub;
+        const targetUserId = 'targetUserId' in body ? body.targetUserId : null;
+        const targetRole = 'targetRole' in body ? body.targetRole : null;
+        const comment = body.comment ?? null;
+
+        if (targetUserId !== null) {
+          if (targetUserId === fromUserId) {
+            throw conflict('cannot transfer a task to its current holder', {
+              taskId,
+              targetUserId,
+            });
+          }
+          const targetActive = countActiveAssignmentsForUser(ctx.db, targetUserId);
+          if (targetActive >= ctx.config.maxConcurrentPerUser) {
+            throw conflict(`target user ${targetUserId} is at its concurrency cap`, {
+              taskId,
+              targetUserId,
+              activeAssignments: targetActive,
+              maxConcurrentPerUser: ctx.config.maxConcurrentPerUser,
+            });
+          }
+          const requiredRoles = lease.task.requiredRoles;
+          const targetExecutors = listExecutorsByUser(ctx.db, targetUserId);
+          const targetHasRole = targetExecutors.some((record) =>
+            requiredRoles.every((role) => record.executor.roles.includes(role)),
+          );
+          if (requiredRoles.length > 0 && targetExecutors.length > 0 && !targetHasRole) {
+            throw conflict(`target user ${targetUserId} has no executor with the required roles`, {
+              taskId,
+              targetUserId,
+              requiredRoles,
+            });
+          }
+        }
+
+        if (
+          targetRole !== null &&
+          lease.task.requiredRoles.length > 0 &&
+          !lease.task.requiredRoles.includes(targetRole)
+        ) {
+          throw conflict(`target role ${targetRole} is not part of this task's role pool`, {
+            taskId,
+            targetRole,
+            requiredRoles: lease.task.requiredRoles,
+          });
+        }
+
+        const previousRequiredRoles = lease.task.requiredRoles;
+        const nextRequiredRoles: Task['requiredRoles'] =
+          targetRole === null ? previousRequiredRoles : [targetRole];
+        const updated: Task = {
+          ...lease.task,
+          state: 'pending',
+          requiredRoles: nextRequiredRoles,
+          lastHolderUserIds: addLastHolder(lease.task.lastHolderUserIds, fromUserId),
+          updatedAt: tx.now,
+        };
+        updateTask(ctx.db, updated);
+        updateAssignment(ctx.db, {
+          ...lease.assignment,
+          state: 'released',
+          updatedAt: tx.now,
+          endedAt: tx.now,
+        });
+        const transfer: TaskTransfer = {
+          id: newUlid(),
+          taskId,
+          assignmentId: lease.assignment.id,
+          fromExecutorId: claims.executorId,
+          fromUserId,
+          targetUserId,
+          targetRole,
+          comment,
+          createdAt: tx.now,
+        };
+        insertTaskTransfer(ctx.db, transfer);
+        tx.append({
+          type: 'assignment.released',
+          subject: { type: 'assignment', id: lease.assignment.id },
+          data: {
+            assignmentId: lease.assignment.id,
+            taskId,
+            executorId: claims.executorId,
+            reason: 'transferred',
+            transferId: transfer.id,
+          },
+          demandId: lease.task.demandId,
+        });
+        tx.append({
+          type: 'task.transferred',
+          subject: { type: 'task', id: taskId },
+          data: {
+            taskId,
+            demandId: lease.task.demandId,
+            transferId: transfer.id,
+            assignmentId: lease.assignment.id,
+            fromExecutorId: claims.executorId,
+            fromUserId,
+            targetUserId,
+            targetRole,
+            previousRequiredRoles,
+            requiredRoles: nextRequiredRoles,
+            lastHolderUserIds: updated.lastHolderUserIds,
+          },
+          demandId: lease.task.demandId,
+        });
+        return { task: updated, transfer };
+      });
+      return sendValidated(reply, transferTaskResponseSchema, {
+        task: result.task,
+        transfer: result.transfer,
         serverTime: nowIso(ctx),
       });
     },

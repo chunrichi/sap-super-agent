@@ -263,4 +263,24 @@ ALTER TABLE outbox ADD COLUMN sent_at TEXT;
 CREATE INDEX idx_outbox_target_status ON outbox (target, status, next_attempt_at);
 `,
   },
+  // --- S3: task transfer audit trail (docs/003 §2.3/§4.2) ---
+  // Append-only. H1 owns v3, H2 owns v4, S3 starts at v5 (Lead adjudication).
+  {
+    version: 5,
+    name: 'task-transfer-audit',
+    sql: `
+CREATE TABLE task_transfers (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  assignment_id TEXT NOT NULL,
+  from_executor_id TEXT NOT NULL,
+  from_user_id TEXT,
+  target_user_id TEXT,
+  target_role TEXT,
+  comment TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX idx_task_transfers_task ON task_transfers (task_id, created_at);
+`,
+  },
 ];

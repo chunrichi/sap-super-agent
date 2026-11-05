@@ -16,6 +16,9 @@ import { Sweepers } from './workers/sweepers.js';
 // --- H2: SAP ICF integration wiring (docs/004 §3, handoffs/H2 §1.5) ---
 import { resolveSapConfig } from './hooks/sap-config.js';
 import { SapWritebackWorker } from './workers/sap-writeback.js';
+// --- S4: generic Hook config + delivery worker (docs/008 §6) ---
+import { resolveHooksConfig } from './hooks/hook-config.js';
+import { HookDeliveryWorker } from './workers/hook-delivery.js';
 
 const EVENT_SOCKET_PATH = '/api/v1/events';
 
@@ -49,6 +52,8 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
     const clock = (): number => Date.now();
     // --- H2: SAP integration is optional; missing config disables it silently ---
     const sap = resolveSapConfig(env);
+    // --- S4: generic hooks are optional; a missing default file disables them ---
+    const hooks = resolveHooksConfig(env);
     // `ctx` is assigned right below; the filter only runs after listening starts.
     const offerFilterState: { ctx: ServerContext | null } = { ctx: null };
     const hub = new EventSocketHub({
@@ -77,6 +82,8 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
       clock,
       // --- H2: SAP ICF integration config (docs/004 §3) ---
       ...(sap.enabled || sap.hookEnabled ? { sap } : {}),
+      // --- S4: resolved generic Hook config (docs/008 §6) ---
+      hooks,
     };
     offerFilterState.ctx = ctx;
     const app = createApp(ctx);
@@ -95,9 +102,12 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
     const sweepers = new Sweepers(ctx);
     // --- H2: SAP writeback worker (no-op when SAP integration is disabled) ---
     const sapWriteback = new SapWritebackWorker(ctx, sap);
+    // --- S4: generic Hook enqueue/delivery worker (no-op when no hook is enabled) ---
+    const hookWorker = new HookDeliveryWorker(ctx, hooks);
     stageRunner.start();
     sweepers.start();
     sapWriteback.start();
+    hookWorker.start();
 
     let closed = false;
     const close = async (): Promise<void> => {
@@ -107,6 +117,8 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
       await sweepers.close();
       // --- H2: stop the SAP writeback worker ---
       await sapWriteback.close();
+      // --- S4: stop the generic Hook worker ---
+      await hookWorker.close();
       await hub.close();
       await app.close();
       db.close();

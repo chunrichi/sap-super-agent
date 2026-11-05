@@ -283,4 +283,33 @@ CREATE TABLE task_transfers (
 CREATE INDEX idx_task_transfers_task ON task_transfers (task_id, created_at);
 `,
   },
+  // --- S4: generic Hook queue state + inbound receipts (docs/008 §4/§6) ---
+  // Append-only: v1–v5 untouched. Hook deliveries reuse the shared `outbox`
+  // table with target = 'hook:<id>'; these two tables only hold the enqueue
+  // cursor and the idempotent receipt ledger.
+  {
+    version: 6,
+    name: 'generic-hooks',
+    sql: `
+CREATE TABLE hook_state (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE hook_receipts (
+  id TEXT PRIMARY KEY,
+  hook_id TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  delivery_id TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  body TEXT NOT NULL,
+  received_at TEXT NOT NULL
+);
+CREATE INDEX idx_hook_receipts_hook ON hook_receipts (hook_id, received_at);
+CREATE INDEX idx_hook_receipts_delivery ON hook_receipts (hook_id, delivery_id);
+CREATE INDEX idx_hook_receipts_external ON hook_receipts (external_id);
+`,
+  },
 ];

@@ -16,13 +16,13 @@ sap-superagent/
 ├─ CONTRIBUTING.md              # 贡献流程、DCO、开发命令
 ├─ SECURITY.md                  # 漏洞报告、密钥与数据边界
 ├─ CODE_OF_CONDUCT.md
-├─ CHANGELOG.md                 # changesets 生成
+├─ CHANGELOG.md                 # 手写维护（Keep a Changelog）
 ├─ package.json                 # workspace root（private）
 ├─ pnpm-workspace.yaml
 ├─ tsconfig.base.json
 ├─ .editorconfig / .gitignore / .env.example / .nvmrc / .npmrc
 ├─ .github/
-│  ├─ workflows/                # ci.yml / release.yml / abap-check.yml(手动)
+│  ├─ workflows/                # ci.yml（check/e2e/build/sap:check/link:check）
 │  ├─ ISSUE_TEMPLATE/           # feature · bug · sap-object · question
 │  └─ pull_request_template.md
 ├─ docs/                        # 设计文档，按顺序阅读
@@ -154,12 +154,11 @@ Refs: #12
 
 ### 3.4 版本与发布
 
-- v1 之前统一 `0.x`；包之间固定版本（fixed versioning），一次发布一个 tag `v0.2.0`，减少版本组合。
-- changesets 管理 CHANGELOG 与版本；发布由 GitHub Actions 在 tag 上执行：
-  - npm：`protocol`、`core`、`server`、`cli`、`sap-adapter`；
-  - GitHub Release：VSIX、Docker 镜像 digest、SAP 包说明；
-  - `sap/` 单独 tag `sap-v0.1.0`，附 abap-cli 建对象说明（本地包 `$ZSA`，无 TR）。
-- 发布节奏：S0–S1 期间按需；v0.1.0 = walking skeleton 可演示；v1.0.0 = M2 + SAP + 门禁 + 一个 Hook 示例可用。
+- 版本线：按 SemVer 打 tag（`v1.0.0` 起），包之间固定版本（fixed versioning），一次发布一个 tag，减少版本组合。
+- **v1.0.0 实际发布物** = 源码 tag `v1.0.0` + [CHANGELOG.md](../CHANGELOG.md) + GitHub Release（发布说明与 VSIX 附件）。SAP 侧对象是本地包 `$ZSA`，随源码 tag 在发布说明中记录，不单独打 tag（无传输请求）。
+- 当前所有包 `private: true`，**不发布 npm**，也不产出 Docker 镜像 digest；M2 团队部署的 systemd / docker compose 方式见 [010 M3 部署与运维](010-m3-deployment.md) §5，镜像与发布流程不属于 v1.0 交付物。
+- 自动化发布（changesets 管理版本与 CHANGELOG、GitHub Actions release workflow 在 tag 上发布）列为后续项；当前发布由维护者手动执行：跑 [009 §4](009-testing.md) 门禁 → 更新 CHANGELOG → `git tag -s v1.0.0` → GitHub Release 附 VSIX。
+- 发布节奏：S0–S1 期间按需；v0.1.0 = walking skeleton 可演示；v1.0.0 = M1 本地模式 + SAP ICF/MIME + 门禁/模板 + Hook 示例 + VSCode 扩展可用（M2 规模与 M3 Phase B 真机项按 [007-roadmap.md](007-roadmap.md) 与 CHANGELOG Known issues 跟踪）。
 
 ### 3.5 PR 与 Issue
 
@@ -171,7 +170,7 @@ Refs: #12
 ### 3.6 安全与合规
 
 - 不提交 `.abap.json`、`.abap-cli/`、`.env`、VSIX、日志、状态目录（`.gitignore` 已覆盖大部分，继续补充）。
-- BYOK 模型 Key 只存服务端环境变量/secret manager；示例配置只放 `.env.example`（`OPENAI_BASE_URL`、`OPENAI_API_KEY` 等占位）。
+- BYOK 模型 Key 只存服务端环境变量/secret manager；示例配置只放 `.env.example`（`SA_AI_PROVIDER`，以及 `SA_AI_BASE_URL`、`SA_AI_API_KEY`、`SA_AI_MODEL` 等占位；默认 `fake` provider 无需 Key）。
 - SAP 凭据只存在于本地 config 或 CI secret，且 CI 只允许测试系统、只读/检查类操作。
 - 依赖扫描（Dependabot）+ secret scanning 开启；`SECURITY.md` 写明数据外发边界（需求/代码是否可发给外部模型）。
 - `NOTICE` 列出第三方许可：`.agents/skills/abap-cli*` 源自 [chunrichi/abap-cli](https://github.com/chunrichi/abap-cli)（MIT），复制时保留版权声明。

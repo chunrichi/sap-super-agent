@@ -52,14 +52,16 @@ pnpm check        # typecheck + lint + unit + contract
 pnpm e2e          # 进程内全链路（含 SAP 宿主批处理 AI，见 §2 #17/#18）
 pnpm build        # 所有包按依赖拓扑序构建
 pnpm sap:check    # SAP AFF 离线校验（CI 不连 SAP；在线 check syntax 手动）
+pnpm link:check   # 文档相对链接 + GitHub 标题锚点（离线零依赖）
 pnpm contract:gen # 生成 openapi/json-schema 并检查 diff（S5 后为 59 schemas / 9 examples / 27 routes）
 ```
 
 - PR 必须通过上述命令；协议变更必须附 `contracts/` diff 与迁移说明。
-- 客户端改动额外跑 `pnpm --filter vscode test`；发布前构建 VSIX 并冒烟安装。
+- CI（`.github/workflows/ci.yml`）依次跑 `pnpm check` → `pnpm e2e` → `pnpm build` → `pnpm sap:check` → `pnpm link:check`；无 abap-cli 时 `sap:check` 自动跳过在线检查仍退出 0。
+- 客户端改动额外跑 `pnpm --filter sap-superagent-vscode run test`；发布前构建 VSIX 并冒烟安装。
 - SAP 改动走 `pnpm sap:check` 离线门禁（`abap validate:aff` + `abap check content`）+ 手动 `abap-check` 工作流：连接测试系统，`check syntax` + ABAP Unit；**永不连生产**。
 - M3 部署文档（[010](010-m3-deployment.md)）的验收 checklist 在 Phase B 真机上执行，证据记录到 `handoffs/STATUS.md`。
-- 文档改动跑本地链接检查（脚本在 `scripts/`）。
+- 文档改动跑 `pnpm link:check`（`scripts/link-check.mjs`：相对路径按文件解析并区分大小写；`#anchor` 按 GitHub 标题 slug 校验；`--json` 输出机器可读结果）。
 
 ## 5. 测试数据与环境
 

@@ -255,6 +255,35 @@ paths:
         - $ref: '#/components/parameters/TaskId'
       responses:
         '200': { description: Task released }
+  /tasks/{id}/transfer:
+    post:
+      tags: [tasks]
+      summary: Transfer a held task back to the pool (optional role pool / user hint)
+      description: |
+        S3 (docs/003 §2.3/§4.2): the holder ends its assignment (`released`) and
+        the task returns to `pending` with a `task.transferred` event. Exactly one
+        of `targetUserId` / `targetRole` is required. `targetRole` explicitly
+        narrows `requiredRoles` to that role; `targetUserId` is an audit and
+        visibility hint only — the task is NOT locked to the user.
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./json-schema/transfer-task-body.json
+      responses:
+        '200':
+          description: Task back in the pool + the transfer audit record
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/transfer-task-response.json
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: Not the holder, terminal task, or target violates role/concurrency rules
   /demands:
     post:
       tags: [demands]

@@ -5,6 +5,7 @@ import {
   executorSchema,
   stageAttemptSchema,
   taskSchema,
+  taskTransferSchema,
 } from '../src/index.js';
 import {
   CHECKSUM,
@@ -126,5 +127,33 @@ describe('run ledger + executor', () => {
     expect(executorSchema.safeParse(executor).success).toBe(true);
     expect(executorSchema.safeParse({ ...executor, presence: 'idle' }).success).toBe(false);
     expect(executorSchema.safeParse({ ...executor, id: DEMAND_ID }).success).toBe(false);
+  });
+});
+
+describe('task transfer audit record (docs/003 §2.3, S3)', () => {
+  const transfer = {
+    id: ULID_A,
+    taskId: ULID_B,
+    assignmentId: ULID_B,
+    fromExecutorId: ULID_A,
+    fromUserId: 'DEV001',
+    targetUserId: null,
+    targetRole: 'developer',
+    comment: '转给 ABAP 同事',
+    createdAt: NOW,
+  };
+
+  it('accepts a role-pool transfer with the previous holder', () => {
+    expect(taskTransferSchema.safeParse(transfer).success).toBe(true);
+  });
+
+  it('requires both nullable target slots to be explicit', () => {
+    const { targetRole: _role, ...missingRole } = transfer;
+    expect(taskTransferSchema.safeParse(missingRole).success).toBe(false);
+  });
+
+  it('rejects unknown roles and non-ULID ids', () => {
+    expect(taskTransferSchema.safeParse({ ...transfer, targetRole: 'tester' }).success).toBe(false);
+    expect(taskTransferSchema.safeParse({ ...transfer, taskId: DEMAND_ID }).success).toBe(false);
   });
 });

@@ -24,6 +24,7 @@ import {
   stageRunSchema,
   taskSchema,
   taskSummarySchema,
+  taskTransferSchema,
   workspaceBindingSchema,
 } from './entities.js';
 import { eventEnvelopeSchema } from './events.js';
@@ -269,6 +270,37 @@ export const releaseTaskResponseSchema = z
   .object({ task: taskSchema, serverTime: isoDateTimeSchema })
   .strict();
 export type ReleaseTaskResponse = z.infer<typeof releaseTaskResponseSchema>;
+
+/**
+ * Transfer request (docs/003 §2.3/§4.2, S3): exactly one of `targetUserId` /
+ * `targetRole`. The task always returns to the pool; `targetRole` explicitly
+ * narrows `requiredRoles` to that role, `targetUserId` is an audit/visibility
+ * hint only (never a lock).
+ */
+export const transferTaskBodySchema = z.union([
+  z
+    .object({
+      targetUserId: z.string().min(1),
+      comment: z.string().max(2_000).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      targetRole: roleSchema,
+      comment: z.string().max(2_000).optional(),
+    })
+    .strict(),
+]);
+export type TransferTaskBody = z.infer<typeof transferTaskBodySchema>;
+
+export const transferTaskResponseSchema = z
+  .object({
+    task: taskSchema,
+    transfer: taskTransferSchema,
+    serverTime: isoDateTimeSchema,
+  })
+  .strict();
+export type TransferTaskResponse = z.infer<typeof transferTaskResponseSchema>;
 
 // ===========================================================================
 // Demands + approvals (docs/003 §4.3)

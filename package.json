@@ -26,7 +26,8 @@
     "sap:check": "node scripts/sap-check.mjs",
     "sap:reconcile": "tsx packages/server/src/sap-reconcile.ts",
     "hooks:reconcile": "node scripts/hooks-reconcile.mjs",
-    "link:check": "node scripts/link-check.mjs"
+    "link:check": "node scripts/link-check.mjs",
+    "sap:ui:preview": "node scripts/sap-ui-preview.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

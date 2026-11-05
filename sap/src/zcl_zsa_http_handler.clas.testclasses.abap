@@ -5,6 +5,10 @@ CLASS ltc_zsa_http_handler DEFINITION FOR TESTING
     METHODS route_classification FOR TESTING.
     METHODS writeback_whitelist FOR TESTING.
     METHODS iso_timestamp_roundtrip FOR TESTING.
+    METHODS current_user_is_session_user FOR TESTING.
+    METHODS resolve_decided_by_default FOR TESTING.
+    METHODS resolve_decided_by_explicit FOR TESTING.
+    METHODS current_user_json_fragment FOR TESTING.
 ENDCLASS.
 
 CLASS ltc_zsa_http_handler IMPLEMENTATION.
@@ -46,5 +50,48 @@ CLASS ltc_zsa_http_handler IMPLEMENTATION.
     DATA(lv_ts) = zcl_zsa_http_handler=>iso_to_tstmp( `2026-11-05T08:00:00Z` ).
     DATA(lv_iso) = zcl_zsa_json=>timestamp_to_iso( lv_ts ).
     cl_abap_unit_assert=>assert_equals( act = lv_iso exp = `2026-11-05T08:00:00Z` ).
+  ENDMETHOD.
+
+  METHOD current_user_is_session_user.
+    DATA lv_expected TYPE char12.
+    lv_expected = sy-uname.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_zsa_http_handler=>current_user( )
+      exp = lv_expected
+      msg = `current_user must come from the SAP session` ).
+  ENDMETHOD.
+
+  METHOD resolve_decided_by_default.
+    DATA lv_expected TYPE char12.
+    lv_expected = sy-uname.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_zsa_http_handler=>resolve_decided_by( `` )
+      exp = lv_expected
+      msg = `missing decidedBy falls back to the session user` ).
+  ENDMETHOD.
+
+  METHOD resolve_decided_by_explicit.
+    DATA lv_expected TYPE char12.
+    lv_expected = `CONSULTANT`.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_zsa_http_handler=>resolve_decided_by( `CONSULTANT` )
+      exp = lv_expected
+      msg = `explicit decidedBy is preserved` ).
+  ENDMETHOD.
+
+  METHOD current_user_json_fragment.
+    DATA lv_json TYPE string.
+    DATA lv_user TYPE string.
+    lv_json = zcl_zsa_http_handler=>current_user_json( ).
+    lv_user = zcl_zsa_http_handler=>current_user( ).
+    SHIFT lv_user RIGHT DELETING TRAILING space.
+    cl_abap_unit_assert=>assert_equals(
+      act = find( val = lv_json sub = `,"currentUser":"` )
+      exp = 0
+      msg = `currentUser fragment must start with the field marker` ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_json
+      exp = `,"currentUser":"` && lv_user && `"`
+      msg = `currentUser fragment must carry the SAP session user` ).
   ENDMETHOD.
 ENDCLASS.

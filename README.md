@@ -129,6 +129,7 @@ pnpm cli init --repo z-sales --project-key SALES   # 写 .sap-superagent/workspa
 pnpm cli token --kind user                         # 单独签发 token
 pnpm cli doctor                                    # 环境自检：Node/pnpm/端口/状态目录/模板/AI
 pnpm link:check                                    # 文档相对链接 + GitHub 标题锚点（离线）
+pnpm sap:ui:preview                                # 本地预览 SAP 内 Web（静态页 + mock ICF API，默认 :4173）
 ```
 
 端口被占用时用 `pnpm cli dev --port <port>`（例如 3080 已被别的应用占用）。

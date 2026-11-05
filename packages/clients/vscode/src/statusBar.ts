@@ -21,6 +21,8 @@ export class ConnectionStatusBar implements vscode.Disposable {
     this.item.text = presentation.text;
     this.item.tooltip = presentation.tooltip;
     this.item.command = presentation.command;
+    // Codicon tokens are noise for screen readers: read the plain label instead.
+    this.item.accessibilityInformation = { label: presentation.accessibilityLabel };
   }
 
   dispose(): void {

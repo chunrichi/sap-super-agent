@@ -28,6 +28,17 @@ CLASS zcl_zsa_http_handler DEFINITION PUBLIC FINAL CREATE PUBLIC.
       IMPORTING iv_iso          TYPE string
       RETURNING VALUE(rv_tstmp) TYPE timestampl.
 
+    " The approver default: the ICF session user, never a client-supplied claim.
+    CLASS-METHODS current_user
+      RETURNING VALUE(rv_user) TYPE sy-uname.
+
+    CLASS-METHODS resolve_decided_by
+      IMPORTING iv_decided_by        TYPE string
+      RETURNING VALUE(rv_decided_by) TYPE char12.
+
+    CLASS-METHODS current_user_json
+      RETURNING VALUE(rv_json) TYPE string.
+
   PRIVATE SECTION.
     METHODS path_from_request
       IMPORTING io_request     TYPE REF TO if_http_request
@@ -216,6 +227,25 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
     rv_tstmp = lv_ts.
   ENDMETHOD.
 
+  METHOD current_user.
+    rv_user = sy-uname.
+  ENDMETHOD.
+
+  METHOD resolve_decided_by.
+    IF iv_decided_by IS INITIAL.
+      rv_decided_by = sy-uname.
+    ELSE.
+      rv_decided_by = iv_decided_by.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD current_user_json.
+    DATA lv_user TYPE string.
+    lv_user = current_user( ).
+    SHIFT lv_user RIGHT DELETING TRAILING space.
+    rv_json = `,"currentUser":"` && zcl_zsa_json=>escape_json( lv_user ) && `"`.
+  ENDMETHOD.
+
   METHOD path_from_request.
     DATA(lv_uri) = io_request->get_header_field( `~path` ).
     IF lv_uri IS INITIAL.
@@ -314,7 +344,8 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
     ENDLOOP.
     lv_json = lv_json && `]`.
     respond_json( io_response = io_response iv_status = 200
-                  iv_body = `{"demands":` && lv_json && `,"serverTime":"` &&
+                  iv_body = `{"demands":` && lv_json && current_user_json( ) &&
+                            `,"serverTime":"` &&
                             zcl_zsa_json=>timestamp_to_iso( zcl_zsa_json=>now_tstmp( ) ) && `"}` ).
   ENDMETHOD.
 
@@ -335,6 +366,7 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
       `,"artifacts":` && artifacts_json( iv_demand_id ) &&
       `,"approvals":` && approvals_json( iv_demand_id ) &&
       `,"events":` && events_json( iv_demand_id ) &&
+      current_user_json( ) &&
       `,"serverTime":"` && zcl_zsa_json=>timestamp_to_iso( zcl_zsa_json=>now_tstmp( ) ) && `"}`.
     respond_json( io_response = io_response iv_status = 200 iv_body = lv_body ).
   ENDMETHOD.
@@ -460,20 +492,63 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
       MODIFY zsa_artifact FROM ls_artifact.
     ENDLOOP.
 
-    IF ls_patch-approval-state IS NOT INITIAL.
+    " SAP Web is the approval source of truth: a writeback only projects a
+    " decision when it carries the full gate identity. Events without a gateKey
+    " (e.g. artifact.approved for a control-plane-only approval) must not create
+    " noise rows, and an existing row for the same gate is reused, never copied.
+    IF ls_patch-approval-state IS NOT INITIAL
+       AND ls_patch-approval-gate_key IS NOT INITIAL.
+      DATA(lv_is_decided) = COND abap_bool(
+        WHEN ls_patch-approval-state = `approved` OR ls_patch-approval-state = `rejected`
+          THEN abap_true ELSE abap_false ).
+      DATA lv_decided_at TYPE timestampl.
+      IF lv_is_decided = abap_true.
+        lv_decided_at = zcl_zsa_json=>now_tstmp( ).
+      ENDIF.
       DATA ls_approval TYPE zsa_approval.
-      ls_approval = VALUE zsa_approval(
-        mandt         = sy-mandt
-        approval_id   = cl_system_uuid=>create_uuid_c32_static( )
-        demand_id     = iv_demand_id
-        stage_key     = ls_demand-stage_key
-        gate_key      = COND char30( WHEN ls_patch-approval-gate_key IS INITIAL THEN `GATE`
-                                     ELSE ls_patch-approval-gate_key )
-        state         = ls_patch-approval-state
-        decided_by    = ls_patch-approval-decided_by
-        decided_at    = zcl_zsa_json=>now_tstmp( )
-        decision_comment = ls_patch-approval-comment ).
-      MODIFY zsa_approval FROM ls_approval.
+      DATA lv_already_decided TYPE abap_bool.
+      IF lv_is_decided = abap_true.
+        SELECT SINGLE * FROM zsa_approval INTO @ls_approval
+          WHERE demand_id = @iv_demand_id
+            AND gate_key  = @ls_patch-approval-gate_key
+            AND ( state = 'approved' OR state = 'rejected' ).
+        lv_already_decided = COND abap_bool( WHEN sy-subrc = 0 THEN abap_true ELSE abap_false ).
+        " Otherwise a pending row may exist for the same gate: project onto it.
+        IF lv_already_decided = abap_false.
+          SELECT SINGLE * FROM zsa_approval INTO @ls_approval
+            WHERE demand_id = @iv_demand_id
+              AND gate_key  = @ls_patch-approval-gate_key
+              AND state = 'pending'.
+        ENDIF.
+      ELSE.
+        SELECT SINGLE * FROM zsa_approval INTO @ls_approval
+          WHERE demand_id = @iv_demand_id
+            AND gate_key  = @ls_patch-approval-gate_key
+            AND state = 'pending'.
+      ENDIF.
+      IF lv_already_decided = abap_false.
+        IF sy-subrc = 0.
+          ls_approval-state = ls_patch-approval-state.
+          ls_approval-decision_comment = ls_patch-approval-comment.
+          IF lv_is_decided = abap_true.
+            ls_approval-decided_by = ls_patch-approval-decided_by.
+            ls_approval-decided_at = lv_decided_at.
+          ENDIF.
+          MODIFY zsa_approval FROM ls_approval.
+        ELSE.
+          ls_approval = VALUE zsa_approval(
+            mandt         = sy-mandt
+            approval_id   = cl_system_uuid=>create_uuid_c32_static( )
+            demand_id     = iv_demand_id
+            stage_key     = ls_demand-stage_key
+            gate_key      = ls_patch-approval-gate_key
+            state         = ls_patch-approval-state
+            decided_by    = ls_patch-approval-decided_by
+            decided_at    = lv_decided_at
+            decision_comment = ls_patch-approval-comment ).
+          INSERT zsa_approval FROM ls_approval.
+        ENDIF.
+      ENDIF.
     ENDIF.
     COMMIT WORK AND WAIT.
     respond_json( io_response = io_response iv_status = 200
@@ -491,12 +566,14 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
       RETURN.
     ENDIF.
     DATA(ls_in) = zcl_zsa_json=>approval_from_json( io_request->get_cdata( ) ).
-    IF ls_in-gate_key IS INITIAL OR ls_in-decided_by IS INITIAL
+    IF ls_in-gate_key IS INITIAL
        OR ( ls_in-decision <> `approve` AND ls_in-decision <> `reject` ).
       respond_error( io_response = io_response iv_status = 400 iv_code = `validation`
-                     iv_message = `gateKey, decision (approve|reject) and decidedBy are required` ).
+                     iv_message = `gateKey and decision (approve|reject) are required` ).
       RETURN.
     ENDIF.
+    " decidedBy is optional: default to the ICF session user (the approver).
+    DATA(lv_decided_by) = resolve_decided_by( ls_in-decided_by ).
     DATA(lv_now) = zcl_zsa_json=>now_tstmp( ).
     DATA(lv_state) = COND char20( WHEN ls_in-decision = `approve` THEN `approved` ELSE `rejected` ).
     DATA(lv_approval_id) = cl_system_uuid=>create_uuid_c32_static( ).
@@ -510,7 +587,7 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
       gate_key    = ls_in-gate_key
       state       = lv_state
       required_role = `consultant`
-      decided_by  = ls_in-decided_by
+      decided_by  = lv_decided_by
       decided_at  = lv_now
       decision_comment = ls_in-comment ).
     INSERT zsa_approval FROM ls_approval.
@@ -520,12 +597,14 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
 
     DATA(lv_type) = COND string( WHEN lv_state = `approved` THEN `artifact.approved`
                                   ELSE `artifact.rejected` ).
+    DATA(lv_decided_by_text) = CONV string( lv_decided_by ).
+    SHIFT lv_decided_by_text RIGHT DELETING TRAILING space.
     DATA(lv_payload) = `{"type":"` && lv_type && `"` &&
       string_field( iv_name = `demandId` iv_value = iv_demand_id ) &&
       string_field( iv_name = `gateKey` iv_value = ls_in-gate_key ) &&
       string_field( iv_name = `stageKey` iv_value = ls_in-stage_key ) &&
       string_field( iv_name = `artifactId` iv_value = ls_in-artifact_id ) &&
-      string_field( iv_name = `decidedBy` iv_value = ls_in-decided_by ) &&
+      string_field( iv_name = `decidedBy` iv_value = lv_decided_by_text ) &&
       string_field( iv_name = `comment` iv_value = ls_in-comment ) &&
       string_field( iv_name = `decidedAt` iv_value = zcl_zsa_json=>timestamp_to_iso( lv_now ) ) &&
       `,"sapVersion":` && CONV string( ls_demand-version ) && `}`.
@@ -655,10 +734,13 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
     DATA lt_approvals TYPE STANDARD TABLE OF zsa_approval WITH DEFAULT KEY.
     SELECT * FROM zsa_approval INTO TABLE @lt_approvals WHERE demand_id = @iv_demand_id.
     rv_json = `[`.
+    DATA lv_decided_at TYPE string.
     LOOP AT lt_approvals INTO DATA(ls_approval).
       IF sy-tabix > 1.
         rv_json = rv_json && `,`.
       ENDIF.
+      lv_decided_at = COND string( WHEN ls_approval-decided_at IS INITIAL THEN ``
+                                   ELSE zcl_zsa_json=>timestamp_to_iso( ls_approval-decided_at ) ).
       rv_json = rv_json &&
         `{"approvalId":"` && zcl_zsa_json=>escape_json( ls_approval-approval_id ) &&
         `","demandId":"` && zcl_zsa_json=>escape_json( ls_approval-demand_id ) &&
@@ -666,6 +748,7 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
         `","gateKey":"` && zcl_zsa_json=>escape_json( ls_approval-gate_key ) &&
         `","state":"` && zcl_zsa_json=>escape_json( ls_approval-state ) &&
         `","decidedBy":"` && zcl_zsa_json=>escape_json( ls_approval-decided_by ) &&
+        `","decidedAt":"` && zcl_zsa_json=>escape_json( lv_decided_at ) &&
         `","comment":"` && zcl_zsa_json=>escape_json( ls_approval-decision_comment ) && `"}`.
     ENDLOOP.
     rv_json = rv_json && `]`.

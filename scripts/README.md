@@ -10,3 +10,4 @@
 | `link-check.mjs` | `pnpm link:check`：离线 markdown 相对链接与 GitHub 标题锚点检查（大小写敏感、`--json`、坏链 exit 1） | v1.0 发布准备 |
 | `vsix-package.mjs` | `pnpm package:vsix`：esbuild 单文件 bundle + clean-room stage + vsce 打包与 VSIX 内容校验（产物 `tmp/vsix/*.vsix`） | v1.0 发布准备 |
 | `vscode-smoke.mjs` | `pnpm vscode:smoke`：真实控制平面 + 真实 VSCode Extension Host 冒烟（任务箱/claim/上下文包/审批）；需要桌面版 VSCode，CI 不跑 | v1.0 发布准备 |
+| `sap-ui-preview.mjs` | `pnpm sap:ui:preview`：SAP MIME 前端的本地预览（静态页 + mock ICF API；`--port` 默认 4173、`--scenario default\|empty\|expired\|pending-row`）；只用于开发，不进 MIME/发布物 | UI 完善 |

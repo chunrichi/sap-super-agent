@@ -42,6 +42,44 @@ describe('computeStatusBar', () => {
       '$(sync~spin) 连接中',
     );
   });
+
+  it('mentions pending gates in the tooltip without changing the text', () => {
+    const presentation = computeStatusBar({
+      connection: 'online',
+      accepting: true,
+      pendingCount: 4,
+      pendingApprovalCount: 2,
+    });
+    expect(presentation.text).toBe('$(circle-filled) 在线 4');
+    expect(presentation.tooltip).toContain('4 个待办');
+    expect(presentation.tooltip).toContain('其中 2 个待审批门禁');
+    // Click behavior stays the documented invariant (toggle accepting).
+    expect(presentation.tooltip).toContain('点击暂停接单');
+    expect(presentation.command).toBe('sapSuperAgent.toggleAccepting');
+  });
+
+  it('omits the gate hint when no gate is pending', () => {
+    const presentation = computeStatusBar({
+      connection: 'online',
+      accepting: false,
+      pendingCount: 2,
+      pendingApprovalCount: 0,
+    });
+    expect(presentation.tooltip).not.toContain('待审批门禁');
+    expect(presentation.tooltip).toContain('恢复接单');
+  });
+
+  it('exposes a codicon-free label for screen readers', () => {
+    const online = computeStatusBar({ connection: 'online', accepting: true, pendingCount: 3 });
+    expect(online.accessibilityLabel).toBe('已连接控制平面，3 个待办');
+    expect(online.accessibilityLabel).not.toContain('$(');
+    expect(computeStatusBar({ connection: 'offline', accepting: true, pendingCount: 0 }).accessibilityLabel).toBe(
+      '离线，尚未连接控制平面',
+    );
+    expect(
+      computeStatusBar({ connection: 'paused', accepting: true, pendingCount: 1 }).accessibilityLabel,
+    ).toBe('已暂停接单，1 个待办');
+  });
 });
 
 describe('shouldStopOnError', () => {

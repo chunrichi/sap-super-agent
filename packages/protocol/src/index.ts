@@ -8,6 +8,8 @@ export * from './events.js';
 export * from './templates.js';
 // --- S4: generic Hook contract (docs/008, docs/003 §4.7) ---
 export * from './hooks.js';
+// --- S5: SAP-batch AI executor contract (docs/003 §4.8) ---
+export * from './ai-jobs.js';
 export * from './requests.js';
 export * from './schemas.js';
 export { z } from 'zod';

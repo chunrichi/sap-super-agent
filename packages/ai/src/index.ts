@@ -34,6 +34,7 @@ export {
 export { createModelProviderFromEnv, DEFAULT_AI_MODEL } from './provider-from-env.js';
 export {
   AI_STAGE_DEFINITIONS,
+  AI_STAGE_SYSTEM_PROMPT,
   DEV_SPEC_OUTPUT_SCHEMA,
   DEV_SPEC_STAGE_KEY,
   INTAKE_OUTPUT_SCHEMA,
@@ -43,6 +44,7 @@ export {
   TEST_DOC_OUTPUT_SCHEMA,
   TEST_DOC_STAGE_KEY,
   aiStageDefinition,
+  renderAiStageMessages,
   renderAiStagePrompt,
   requireAiStageDefinition,
   resetPromptCache,
@@ -50,6 +52,7 @@ export {
   runAiStage,
   type AiStageDefinition,
   type AiStageInput,
+  type AiStageMessages,
   type AiStageRunResult,
   type AiStageUpstreamArtifact,
   type DevSpecOutput,

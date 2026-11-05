@@ -23,6 +23,7 @@ tags:
   - name: events
   - name: admin
   - name: hooks
+  - name: sap
 paths:
   /healthz:
     get:
@@ -582,6 +583,131 @@ paths:
         '401':
           description: Missing/invalid X-SA-* signature or stale timestamp
         '404': { $ref: '#/components/responses/NotFound' }
+  # --- S5: SAP-batch AI executor (docs/003 §4.8). Every SAP -> control-plane
+  # call is a POST signed with the shared X-SA-* HMAC headers (reusing the SAP
+  # webhook secret); no Bearer token. Only the admin requeue uses admin auth.
+  /sap/ai-jobs/next:
+    post:
+      tags: [sap]
+      summary: List claimable SAP-batch AI jobs (read-only, no state change)
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: ./json-schema/sap-ai-jobs-next-body.json
+      responses:
+        '200':
+          description: Claimable jobs (oldest first)
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/sap-ai-jobs-response.json
+        '401':
+          description: Missing/invalid X-SA-* signature or stale timestamp
+  /sap/ai-jobs/{id}/claim:
+    post:
+      tags: [sap]
+      summary: Claim a queued job and receive a lease (409 while the lease is live)
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Job + claimId + lease
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/sap-ai-job-claim-response.json
+        '401':
+          description: Missing/invalid X-SA-* signature or stale timestamp
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /sap/ai-jobs/{id}/heartbeat:
+    post:
+      tags: [sap]
+      summary: Renew the claim lease (409 on claim mismatch or expired lease)
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./json-schema/sap-ai-job-heartbeat-body.json
+      responses:
+        '200':
+          description: Renewed lease
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/sap-ai-job-heartbeat-response.json
+        '401':
+          description: Missing/invalid X-SA-* signature or stale timestamp
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /sap/ai-jobs/{id}/result:
+    post:
+      tags: [sap]
+      summary: Post the raw model output or a failure (idempotent per job state)
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./json-schema/sap-ai-job-result-body.json
+      responses:
+        '200':
+          description: Result applied (or already applied, `duplicate: true`)
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/sap-ai-job-result-response.json
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: Missing/invalid X-SA-* signature or stale timestamp
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/sap/ai-jobs/{id}/requeue:
+    post:
+      tags: [admin, sap]
+      summary: Requeue a failed/expired job (admin; idempotent)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: ./json-schema/sap-ai-job-requeue-body.json
+      responses:
+        '200':
+          description: Job requeued (or already queued)
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/sap-ai-job-requeue-response.json
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 components:
   securitySchemes:
     bearerAuth:
@@ -625,3 +751,5 @@ components:
       description: Missing/expired token
     NotFound:
       description: Entity not found
+    Conflict:
+      description: State conflict (lease live, claim mismatch, stage already advanced)

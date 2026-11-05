@@ -1,0 +1,12 @@
+{
+  "claimId": "CLAIM-01J8ZQ9W3K5M2V7X4C6B8N0P1S",
+  "status": "succeeded",
+  "outputText": "{\"summary\":\"示例模型原始输出\"}",
+  "usage": {
+    "promptTokens": 812,
+    "completionTokens": 240,
+    "totalTokens": 1052,
+    "model": "gateway-model"
+  },
+  "durationMs": 2340
+}

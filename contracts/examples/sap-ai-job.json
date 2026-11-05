@@ -1,0 +1,27 @@
+{
+  "id": "01J8ZQ9W3K5M2V7X4C6B8N0P1Q",
+  "stageRunId": "01J8ZQ9W3K5M2V7X4C6B8N0P1R",
+  "demandId": "4a3f9c2e7b1d48f0a6c5e2d9b8f7a1c3",
+  "attempt": 1,
+  "stageKey": "requirement_analysis",
+  "state": "queued",
+  "payload": {
+    "stageRunId": "01J8ZQ9W3K5M2V7X4C6B8N0P1R",
+    "demandId": "4a3f9c2e7b1d48f0a6c5e2d9b8f7a1c3",
+    "stageKey": "requirement_analysis",
+    "stageName": "需求分析",
+    "attempt": 1,
+    "promptVersion": "requirement-analysis/v1",
+    "systemPrompt": "你是 SAP 研发交付流程中的结构化文档助手。只输出符合要求的单个 JSON 对象。",
+    "prompt": "# 需求分析\\n请按模板要求输出 JSON。",
+    "model": "gateway-model",
+    "outputSchema": "requirement_analysis",
+    "timeoutMs": 120000
+  },
+  "claimId": null,
+  "leaseExpiresAt": null,
+  "result": null,
+  "lastError": null,
+  "createdAt": "2026-11-05T12:00:00.000Z",
+  "updatedAt": "2026-11-05T12:00:00.000Z"
+}

@@ -44,6 +44,21 @@ import {
   withdrawApprovalResponseSchema,
 } from './requests.js';
 import { stageTemplateFileSchema, stageTemplateSchema } from './templates.js';
+// --- S5: SAP-batch AI executor contract (docs/003 §4.8) ---
+import {
+  sapAiJobClaimBodySchema,
+  sapAiJobClaimResponseSchema,
+  sapAiJobHeartbeatBodySchema,
+  sapAiJobHeartbeatResponseSchema,
+  sapAiJobRequeueBodySchema,
+  sapAiJobRequeueResponseSchema,
+  sapAiJobResultBodySchema,
+  sapAiJobResultResponseSchema,
+  sapAiJobsNextBodySchema,
+  sapAiJobsResponseSchema,
+  sapAiJobsStatusSchema,
+  sapAiJobSchema,
+} from './ai-jobs.js';
 // --- S4: generic Hook schemas (docs/008) ---
 import {
   hookDefinitionSchema,
@@ -111,6 +126,19 @@ export const contractSchemas = {
   'hook-status': listHooksResponseSchema,
   'hook-replay-body': hookReplayBodySchema,
   'hook-replay-response': hookReplayResponseSchema,
+  // --- S5: SAP-batch AI executor (docs/003 §4.8) ---
+  'sap-ai-job': sapAiJobSchema,
+  'sap-ai-jobs-response': sapAiJobsResponseSchema,
+  'sap-ai-jobs-next-body': sapAiJobsNextBodySchema,
+  'sap-ai-job-claim-body': sapAiJobClaimBodySchema,
+  'sap-ai-job-claim-response': sapAiJobClaimResponseSchema,
+  'sap-ai-job-heartbeat-body': sapAiJobHeartbeatBodySchema,
+  'sap-ai-job-heartbeat-response': sapAiJobHeartbeatResponseSchema,
+  'sap-ai-job-result-body': sapAiJobResultBodySchema,
+  'sap-ai-job-result-response': sapAiJobResultResponseSchema,
+  'sap-ai-job-requeue-body': sapAiJobRequeueBodySchema,
+  'sap-ai-job-requeue-response': sapAiJobRequeueResponseSchema,
+  'sap-ai-jobs-status': sapAiJobsStatusSchema,
 } satisfies Record<string, z.ZodType>;
 
 export type ContractSchemaName = keyof typeof contractSchemas;

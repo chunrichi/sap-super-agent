@@ -212,6 +212,14 @@ export function requireAiStageDefinition(stageKey: string): AiStageDefinition {
 const SYSTEM_PROMPT =
   '你是 SAP 研发交付流程中的结构化文档助手。只输出符合要求的单个 JSON 对象，不要输出解释文字或 Markdown 代码围栏。';
 
+/**
+ * The fixed system instruction for every structured stage. Exported so the
+ * S5 SAP-batch executor can put the *same* instruction into the job payload
+ * instead of re-deriving prompt text in ABAP (docs/003 §4.8: prompt rendered by
+ * the control plane only).
+ */
+export const AI_STAGE_SYSTEM_PROMPT = SYSTEM_PROMPT;
+
 export interface RunAiStageOptions {
   model?: string;
   attempt?: number;
@@ -254,6 +262,29 @@ export function renderAiStagePrompt(definition: AiStageDefinition, input: AiStag
     .replaceAll('{{upstreamJson}}', JSON.stringify(upstream, null, 2));
 }
 
+/** Chat messages for one structured stage run (single source for all executors). */
+export interface AiStageMessages {
+  /** Fixed system instruction (see {@link AI_STAGE_SYSTEM_PROMPT}). */
+  systemPrompt: string;
+  /** Rendered user prompt. */
+  prompt: string;
+}
+
+/**
+ * Build the messages of a stage run. The local `runAiStage` provider and the
+ * S5 SAP-batch job payload both use this so the prompt never diverges between
+ * executors (docs/003 §4.8).
+ */
+export function renderAiStageMessages(
+  definition: AiStageDefinition,
+  input: AiStageInput,
+): AiStageMessages {
+  return {
+    systemPrompt: AI_STAGE_SYSTEM_PROMPT,
+    prompt: renderAiStagePrompt(definition, input),
+  };
+}
+
 function resolveModel(options: RunAiStageOptions): string {
   if (options.model !== undefined && options.model.length > 0) return options.model;
   const fromEnv = process.env['SA_AI_MODEL']?.trim();
@@ -268,9 +299,10 @@ export async function runAiStage<T>(
 ): Promise<AiStageRunResult<T>> {
   const model = resolveModel(options);
   const attempt = options.attempt ?? 1;
+  const rendered = renderAiStageMessages(definition, input);
   const messages = [
-    { role: 'system' as const, content: SYSTEM_PROMPT },
-    { role: 'user' as const, content: renderAiStagePrompt(definition, input) },
+    { role: 'system' as const, content: rendered.systemPrompt },
+    { role: 'user' as const, content: rendered.prompt },
   ];
   const startedAtMs = Date.now();
   const result = await provider.complete({

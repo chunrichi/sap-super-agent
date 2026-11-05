@@ -6,7 +6,7 @@
 | ID | 任务书 | 状态 | Owner | 分支 | 最近提交 | 验证 | 备注 / 偏差 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | H0 | [H0-walking-skeleton.md](H0-walking-skeleton.md) | done | lead（协作者 svc-server：server/ai；svc-clients：cli/vscode；verifier：只读验收三轮，最终 YES） | feat/h0-walking-skeleton | d03dc29（代码完结于 8b97215） | `pnpm install --frozen-lockfile` ✅；`pnpm check` ✅（8 包 typecheck + eslint + **252** 单测/集成 + contract 快照 27 schemas / 5 examples / 19 routes）；`pnpm e2e` ✅（4/4，多轮运行无 flake）；`pnpm build` ✅（8/8）；H0 §2 手工冒烟 ✅（healthz → 建需求 → AI 工件 → 手建任务 → 注册/心跳/领取/上下文/工件/完成 → 事件时间线 → SIGINT 优雅退出） | 完成；偏差与遗留见下节 |
-| H1 | [H1-gates-and-templates.md](H1-gates-and-templates.md) | todo | 待认领 | — | — | — | H0 已完成，依赖满足，可认领：审批/门禁、3 阶段与 PDO 模板、checklist、工件 stale/版本、golden set。**执行交接见 [H1-H2-execution-handoff.md](H1-H2-execution-handoff.md)**（§2、§4、§6 启动 Prompt） |
+| H1 | [H1-gates-and-templates.md](H1-gates-and-templates.md) | in_progress | h1-agent（worktree `.sap-superagent-worktrees/h1`） | feat/h1-gates | 8ad6df9（契约 b0e8714） | `pnpm check` ✅（274 tests；contract 36 schemas/5 examples/19 routes）；`pnpm e2e` ✅（4/4，已适配 3 阶段模板）；`pnpm contract:gen` ✅ | 契约冻结（docs/003+protocol+contracts）；模板系统（default 3 阶段 G1/G3/G4、pdo 6 阶段 G1–G5、版本固定、GET /templates）与 core checklist 断言注册表已落；进行中：门禁运行时/工件 stale/golden set |
 | H2 | [H2-sap-icf-mime.md](H2-sap-icf-mime.md) | todo | 待认领 | — | — | — | H0 已完成；协议已冻结，DDIC/ICF/MIME 前端可先行；联调需本任务实现 `/hooks/sap` 与 `packages/sap-adapter`。**执行交接见 [H1-H2-execution-handoff.md](H1-H2-execution-handoff.md)**（§3、§4、§6 启动 Prompt；先用 abap-cli skill，只连测试系统） |
 
 ## H0 偏差与遗留（交接给 H1 / H2 / 用户）
@@ -36,3 +36,5 @@
 | 2026-11-05 | 第三轮独立复核（verifier）结论 **H0 DoD met: YES**：六个交付缺口 + D1–D4 全部复现通过，无阻塞项；仅 STATUS 推送计数 16→17 的笔误当场修正 |
 | 2026-11-05 | H0 分支 `feat/h0-walking-skeleton`（`d03dc29`）已推送到 origin；工作区干净 |
 | 2026-11-05 | 新增 H1/H2 执行交接 [H1-H2-execution-handoff.md](H1-H2-execution-handoff.md)：H0 可复用接口、H1/H2 实施顺序、共享文件协调、环境坑、启动 Prompt；HANDOFF.md/H1/H2 任务书已加指针 |
+| 2026-11-05 | H1 认领（h1-agent，worktree + 分支 `feat/h1-gates`，基线 a9e5e98）；契约先行提交 b0e8714：StageTemplate autonomy/requiredRoles/checklist 闭集、Approval 绑定 (artifactId, artifactVersion)、notification/artifactChain、GET /templates、approvals/notifications/withdraw/demand-artifacts/admin-expire 路由、事件 artifact.stale/approval.expired/withdrawn；contracts 27→36 schemas |
+| 2026-11-05 | H1 子项 1/7+2/7：core checklist 断言注册表（e60bf32）；templates/default.yaml 3 阶段 G1/G3/G4、templates/pdo.yaml 6 阶段 G1–G5、版本化 registry + GET /templates、core/server 模板测试（8ad6df9）；`pnpm check` 274 tests ✅、`pnpm e2e` 4/4 ✅ |

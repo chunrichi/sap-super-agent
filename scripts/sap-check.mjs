@@ -122,6 +122,11 @@ const forbiddenContent = [
   /https?:\/\/\d{1,3}(?:\.\d{1,3}){3}/,
 ];
 const sapFiles = existsSync(SAP_DIR) ? walk(SAP_DIR) : [];
+// Syntax/content checks only target the committed SAP sources. Using
+// `abap check syntax --all` would also walk gitignored scratch copies under
+// tmp/ (abap pull output), which turns a local UI/ABAP experiment into a
+// false CI failure. Keep the explicit list: sap/ is the delivery unit.
+const sapAbapFiles = sapFiles.filter((file) => file.endsWith('.abap'));
 let secretIssues = 0;
 for (const file of sapFiles) {
   const rel = relative(ROOT, file);
@@ -167,7 +172,7 @@ if (!hasBinary('abap')) {
   // -------------------------------------------------------------------------
   // 3. Offline local content check (`abap check content`, no SAP round-trip)
   // -------------------------------------------------------------------------
-  const abapFiles = sapFiles.filter((file) => file.endsWith('.abap'));
+  const abapFiles = sapAbapFiles;
   const content = runAbap(['check', 'content', ...abapFiles, '--json']);
   let contentBody;
   try {
@@ -205,9 +210,11 @@ if (!onlineRequested) {
 } else if (!existsSync(resolve(ROOT, 'sap/src'))) {
   warn('abap check syntax skipped: sap/src not found');
 } else {
-  const syntax = runAbap(['check', 'syntax', '--all', '--json']);
+  const syntax = runAbap(['check', 'syntax', ...sapAbapFiles, '--json']);
   if (syntax.status === 0) {
-    pass('abap check syntax --all: SAP syntax check passed on the bound test system');
+    pass(
+      `abap check syntax: ${sapAbapFiles.length} local ABAP file(s) passed on the bound test system`,
+    );
   } else {
     fail(
       `abap check syntax failed: ${`${syntax.stdout ?? ''}${syntax.stderr ?? ''}`.slice(0, 2000)}`,
@@ -227,4 +234,8 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
-console.log('sap:check OK (offline; no SAP system contacted)');
+console.log(
+  onlineRequested
+    ? 'sap:check OK (offline checks + online syntax check on the bound test system)'
+    : 'sap:check OK (offline; no SAP system contacted)',
+);

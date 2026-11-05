@@ -112,6 +112,7 @@ export interface MockState {
   openedDocuments: { path?: string; content?: string }[];
   outputLines: string[];
   workspaceFolders: MockWorkspaceFolder[] | undefined;
+  workspaceTrusted: boolean;
 }
 
 export const mockState: MockState = {
@@ -131,6 +132,7 @@ export const mockState: MockState = {
   openedDocuments: [],
   outputLines: [],
   workspaceFolders: undefined,
+  workspaceTrusted: true,
 };
 
 export function resetVscodeMock(): void {
@@ -150,6 +152,7 @@ export function resetVscodeMock(): void {
   mockState.openedDocuments.length = 0;
   mockState.outputLines.length = 0;
   mockState.workspaceFolders = undefined;
+  mockState.workspaceTrusted = true;
 }
 
 export interface MockWorkspaceFolder {
@@ -172,6 +175,8 @@ export interface MockTreeView extends Disposable {
   visible: boolean;
   message: string | undefined;
   title: string | undefined;
+  /** The provider passed to createTreeView, so tests can inspect inbox nodes. */
+  treeDataProvider: unknown;
   reveal(): Promise<void>;
 }
 
@@ -198,11 +203,12 @@ function createStatusBarItem(alignment: number, priority: number): MockStatusBar
   return item;
 }
 
-function createTreeView(): MockTreeView {
+function createTreeView(options?: unknown): MockTreeView {
   const view: MockTreeView = {
     visible: true,
     message: undefined,
     title: undefined,
+    treeDataProvider: (options as { treeDataProvider?: unknown } | undefined)?.treeDataProvider,
     reveal: async () => undefined,
     dispose: () => {
       view.visible = false;
@@ -256,7 +262,7 @@ function createTextDocument(content: string, languageId = 'markdown', path?: str
 export const window = {
   createStatusBarItem: (alignment: number, priority: number): MockStatusBarItem =>
     createStatusBarItem(alignment, priority),
-  createTreeView: (_viewId: string, _options?: unknown): MockTreeView => createTreeView(),
+  createTreeView: (_viewId: string, options?: unknown): MockTreeView => createTreeView(options),
   async showInputBox(_options?: unknown): Promise<string | undefined> {
     return mockState.inputBoxResponses.shift();
   },
@@ -330,15 +336,25 @@ export const commands = {
   },
 };
 
+const workspaceFoldersEmitter = new EventEmitter<unknown>();
+
+/** Test helper: fire `onDidChangeWorkspaceFolders` (folder switch / removal). */
+export function fireWorkspaceFoldersChanged(): void {
+  workspaceFoldersEmitter.fire(undefined);
+}
+
 export const workspace = {
   get workspaceFolders(): MockWorkspaceFolder[] | undefined {
     return mockState.workspaceFolders;
+  },
+  get isTrusted(): boolean {
+    return mockState.workspaceTrusted;
   },
   getConfiguration(prefix?: string): MockConfiguration {
     return createConfiguration(prefix);
   },
   onDidChangeConfiguration: new EventEmitter<unknown>().event,
-  onDidChangeWorkspaceFolders: new EventEmitter<unknown>().event,
+  onDidChangeWorkspaceFolders: workspaceFoldersEmitter.event,
   async openTextDocument(arg: { content: string; language?: string } | Uri): Promise<MockTextDocument> {
     if (arg instanceof Uri) {
       const opened = mockState.openedDocuments.find((entry) => entry.path === arg.fsPath);

@@ -1,14 +1,31 @@
 // VSCode extension entry point (docs/005 §2). Wires the task inbox, status bar,
-// executor heartbeat and the six user-facing commands. All control-plane calls
-// go through `ControlPlaneClient`; all workspace file IO stays local.
+// executor heartbeat, the realtime WS subscription and the user-facing commands.
+// All control-plane calls go through `ControlPlaneClient`; all workspace file IO
+// stays local.
 import { createHash } from 'node:crypto';
 import * as vscode from 'vscode';
 import { ARTIFACT_KINDS } from '@sap-superagent/protocol';
-import type { ArtifactKind, SubmitArtifactBody, Task } from '@sap-superagent/protocol';
+import type {
+  Approval,
+  ArtifactKind,
+  Notification,
+  SubmitArtifactBody,
+  Task,
+} from '@sap-superagent/protocol';
 import { ControlPlaneClient, ControlPlaneError, type TaskContextResponse } from './client.js';
+import { EventStreamClient, type SocketLike } from './events.js';
 import { ExecutorRuntime, type ExecutorState } from './executor.js';
+import { evaluatePreflight } from './preflight.js';
 import { ConnectionStatusBar } from './statusBar.js';
-import { INBOX_VIEW_ID, TaskInboxProvider, describeTask, type InboxData } from './tasksView.js';
+import {
+  APPROVAL_ACTION_COMMAND,
+  INBOX_VIEW_ID,
+  READ_NOTIFICATION_COMMAND,
+  TaskInboxProvider,
+  describeTask,
+  type InboxData,
+  type WaitingItem,
+} from './tasksView.js';
 import {
   readWorkspaceBinding,
   toExecutorWorkspace,
@@ -21,17 +38,58 @@ import { TOKEN_ENV_VAR, TOKEN_SECRET_STORAGE_KEY, machineIdHash, resolveExecutor
 const CONFIG_SECTION = 'sapSuperAgent';
 const DEFAULT_CONTROL_PLANE_URL = 'http://127.0.0.1:3080';
 const CLAIMED_TASKS_STATE_KEY = 'sapSuperAgent.claimedTasks';
+/** Global (not workspace-scoped) WS cursor: `context.globalState` per S3. */
+const LAST_EVENT_SEQ_KEY = 'sapSuperAgent.lastEventSeq';
 const INBOX_REFRESH_INTERVAL_MS = 30_000;
 
+/** Event types that change the inbox / status bar and trigger a refresh. */
+const REFRESH_EVENT_TYPES = new Set([
+  'task.created',
+  'task.updated',
+  'task.released',
+  'task.transferred',
+  'task.cancelled',
+  'task.claimed',
+  'task.completed',
+  'task.failed',
+  'approval.requested',
+  'approval.decided',
+  'approval.expired',
+  'approval.withdrawn',
+  'artifact.stale',
+  'demand.updated',
+  'stage.waiting_human',
+  'stage.failed',
+]);
+
 let client: ControlPlaneClient | undefined;
+/** User/admin-token client for approvals/notifications (executor token is separate). */
+let userClient: ControlPlaneClient | undefined;
 let runtime: ExecutorRuntime | undefined;
 let statusBar: ConnectionStatusBar | undefined;
 let inbox: TaskInboxProvider | undefined;
+let eventStream: EventStreamClient | undefined;
+let extensionContext: vscode.ExtensionContext | undefined;
 let refreshTimer: ReturnType<typeof setInterval> | undefined;
+let socketFactory: ((url: string) => SocketLike) | undefined;
 let availableTasks: Task[] = [];
+let waitingApprovals: Approval[] = [];
+let unreadNotifications: Notification[] = [];
 let lastExecutorState: ExecutorState | undefined;
+let lastWorkspaceFolder: string | null | undefined;
+let refreshInFlight: Promise<void> | null = null;
+let refreshQueued = false;
+let authWarningShown = false;
 
 const claimedTasks = new Map<string, Task>();
+
+/**
+ * @internal Test seam: inject a WS factory (unit tests never open a socket).
+ * Pass `undefined` to restore the real `ws` implementation.
+ */
+export function setEventSocketFactory(factory: ((url: string) => SocketLike) | undefined): void {
+  socketFactory = factory;
+}
 
 function configuration(): vscode.WorkspaceConfiguration {
   return vscode.workspace.getConfiguration(CONFIG_SECTION);
@@ -80,6 +138,26 @@ function asTask(value: unknown): Task | undefined {
     : undefined;
 }
 
+function asApproval(value: unknown): Approval | undefined {
+  if (value === null || typeof value !== 'object') {
+    return undefined;
+  }
+  const candidate = value as Partial<Approval>;
+  return typeof candidate.id === 'string' && typeof candidate.gateKey === 'string' && candidate.state === 'pending'
+    ? (candidate as Approval)
+    : undefined;
+}
+
+function asNotification(value: unknown): Notification | undefined {
+  if (value === null || typeof value !== 'object') {
+    return undefined;
+  }
+  const candidate = value as Partial<Notification>;
+  return typeof candidate.id === 'string' && typeof candidate.title === 'string'
+    ? (candidate as Notification)
+    : undefined;
+}
+
 async function persistClaimedTasks(context: vscode.ExtensionContext): Promise<void> {
   await context.workspaceState.update(CLAIMED_TASKS_STATE_KEY, [...claimedTasks.values()]);
 }
@@ -88,7 +166,40 @@ function syncRuntimeActiveTasks(): void {
   runtime?.setActiveTasks([...claimedTasks.keys()]);
 }
 
-async function refreshInbox(): Promise<void> {
+/** "等待我回答" rows: pending gates + unread notifications that are not already gates. */
+function buildWaitingItems(): WaitingItem[] {
+  const pendingApprovalIds = new Set(waitingApprovals.map((approval) => approval.id));
+  const items: WaitingItem[] = waitingApprovals.map((approval) => ({
+    kind: 'approval' as const,
+    approval,
+  }));
+  for (const notification of unreadNotifications) {
+    if (notification.approvalId !== null && pendingApprovalIds.has(notification.approvalId)) {
+      continue;
+    }
+    items.push({ kind: 'notification' as const, notification });
+  }
+  return items;
+}
+
+function showActionableError(error: unknown, prefix: string): void {
+  if (error instanceof ControlPlaneError) {
+    if (error.status === 401 || error.status === 403) {
+      if (!authWarningShown) {
+        authWarningShown = true;
+        void vscode.window.showWarningMessage(
+          '控制平面拒绝了 token（401/403）。请运行 “SAP Super Agent: 连接控制平面” 重新授权；已暂停接单，不会静默重试。',
+        );
+      }
+      return;
+    }
+    void vscode.window.showWarningMessage(`${prefix}：${error.message}`);
+    return;
+  }
+  void vscode.window.showWarningMessage(`${prefix}：${error instanceof Error ? error.message : String(error)}`);
+}
+
+async function doRefreshInbox(): Promise<void> {
   if (inbox === undefined) {
     return;
   }
@@ -103,18 +214,129 @@ async function refreshInbox(): Promise<void> {
       }
     }
   }
+  if (userClient !== undefined) {
+    try {
+      const [approvals, notifications] = await Promise.all([
+        userClient.listApprovals({ assignee: 'me', state: 'pending' }),
+        userClient.listNotifications({ state: 'unread' }),
+      ]);
+      waitingApprovals = approvals.approvals;
+      unreadNotifications = notifications.notifications;
+    } catch (error) {
+      showActionableError(error, '读取审批/通知失败');
+    }
+  }
   const data: InboxData = {
     available: availableTasks,
     mine: [...claimedTasks.values()],
-    // H0 has no approvals yet; the group stays visible and empty (H1 fills it).
-    waiting: [],
+    waiting: buildWaitingItems(),
   };
   inbox.refresh(data);
-  runtime?.setPendingCount(data.available.length + data.mine.length);
+  const pendingCount = data.available.length + data.mine.length + data.waiting.length;
+  runtime?.setPendingCount(pendingCount);
   updateStatusBar();
 }
 
+/**
+ * Refresh the inbox; concurrent triggers (WS frames + timer + command) coalesce
+ * into at most one in-flight REST round, re-running once if another arrived.
+ */
+function refreshInbox(): Promise<void> {
+  if (refreshInFlight !== null) {
+    refreshQueued = true;
+    return refreshInFlight;
+  }
+  refreshInFlight = (async () => {
+    do {
+      refreshQueued = false;
+      await doRefreshInbox();
+    } while (refreshQueued && inbox !== undefined);
+  })().finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
+
+/** Release every held task (workspace switch / reconnect), best effort. */
+async function releaseClaimedTasks(reason: string): Promise<number> {
+  const released: string[] = [];
+  for (const taskId of [...claimedTasks.keys()]) {
+    if (client !== undefined && client.registeredExecutorId !== null) {
+      try {
+        await client.release(taskId);
+        released.push(taskId);
+      } catch {
+        // The lease may already be gone (expiry); dropping it locally is right.
+      }
+    }
+    claimedTasks.delete(taskId);
+  }
+  syncRuntimeActiveTasks();
+  if (extensionContext !== undefined) {
+    await persistClaimedTasks(extensionContext);
+  }
+  if (released.length > 0) {
+    void vscode.window.showInformationMessage(
+      `已释放 ${released.length} 个任务（${reason}），它们已回到可领取池。`,
+    );
+  }
+  return released.length;
+}
+
+async function resyncAfterGap(context: vscode.ExtensionContext, frame: { lastSeq: number; earliestSeq: number }): Promise<void> {
+  // Full pull (docs/003 §4.4): authoritative inbox + retained event replay.
+  await refreshInbox();
+  if (client === undefined) {
+    return;
+  }
+  try {
+    const replay = await client.listEvents(Math.max(frame.earliestSeq - 1, 0));
+    await context.globalState.update(LAST_EVENT_SEQ_KEY, replay.lastSeq);
+    eventStream?.seek(replay.lastSeq);
+  } catch {
+    // The next reconnect will hit resync_required again; state stays authoritative via REST.
+  }
+  await refreshInbox();
+}
+
+function handleEventType(type: string): void {
+  if (REFRESH_EVENT_TYPES.has(type)) {
+    void refreshInbox();
+  }
+}
+
+function stopEventStream(): void {
+  eventStream?.stop();
+  eventStream = undefined;
+}
+
+function startEventStream(context: vscode.ExtensionContext): void {
+  stopEventStream();
+  if (client === undefined || lastExecutorState?.connection !== 'online') {
+    return;
+  }
+  const afterSeq = context.globalState.get<number>(LAST_EVENT_SEQ_KEY, 0);
+  eventStream = new EventStreamClient({
+    url: client.eventStreamUrl(),
+    afterSeq,
+    ...(socketFactory === undefined ? {} : { createSocket: socketFactory }),
+    onEvent: (event) => handleEventType(event.type),
+    onTaskOffered: () => {
+      // Transport hint: refresh the inbox immediately instead of waiting for a poll.
+      void refreshInbox();
+    },
+    onResync: (frame) => {
+      void resyncAfterGap(context, frame);
+    },
+    onSeq: (seq) => {
+      void context.globalState.update(LAST_EVENT_SEQ_KEY, seq);
+    },
+  });
+  eventStream.start();
+}
+
 async function startExecutor(context: vscode.ExtensionContext): Promise<void> {
+  extensionContext = context;
   const token = await resolveToken(context);
   if (token === undefined) {
     updateStatusBar();
@@ -127,14 +349,26 @@ async function startExecutor(context: vscode.ExtensionContext): Promise<void> {
     folder === undefined
       ? null
       : (toExecutorWorkspace(binding, workspaceKeyForFolder(folder.uri.fsPath), folder.name) ?? null);
+  // docs/005 §2.5 / docs/009 #5: switching the open folder releases held tasks,
+  // even for unbound tasks (an unbound workspace has no workspaceKey at all).
+  const folderPath = folder?.uri.fsPath ?? null;
+  if (lastWorkspaceFolder !== undefined && lastWorkspaceFolder !== folderPath && claimedTasks.size > 0) {
+    stopEventStream();
+    await releaseClaimedTasks(`工作区已切换：${lastWorkspaceFolder ?? '无'} → ${folderPath ?? '无'}`);
+  }
+  lastWorkspaceFolder = folderPath;
 
   client ??= new ControlPlaneClient({ baseUrl: url, token });
   client.setBaseUrl(url);
   // `token` is the user/admin token from SecretStorage; register exchanges it
-  // for the executor token used by heartbeat/claim (server-side rule).
+  // for the executor token used by heartbeat/claim/WS (server-side rule).
   client.setBaseToken(token);
+  userClient ??= new ControlPlaneClient({ baseUrl: url, token });
+  userClient.setBaseUrl(url);
+  userClient.setToken(token);
 
   if (runtime !== undefined) {
+    stopEventStream();
     await runtime.stop({ unregister: true });
     runtime = undefined;
   }
@@ -150,6 +384,9 @@ async function startExecutor(context: vscode.ExtensionContext): Promise<void> {
     onState: (state) => {
       lastExecutorState = state;
       updateStatusBar(state);
+      if (state.connection === 'paused') {
+        stopEventStream();
+      }
     },
     onError: (message) => {
       void vscode.window.showWarningMessage(message);
@@ -169,6 +406,9 @@ async function startExecutor(context: vscode.ExtensionContext): Promise<void> {
   });
   syncRuntimeActiveTasks();
   await runtime.start();
+  if (lastExecutorState?.connection === 'online') {
+    startEventStream(context);
+  }
   await refreshInbox();
 }
 
@@ -219,6 +459,7 @@ async function commandConnect(context: vscode.ExtensionContext): Promise<void> {
   }
   await context.secrets.store(TOKEN_SECRET_STORAGE_KEY, token.trim());
   await configuration().update('controlPlaneUrl', url.trim(), vscode.ConfigurationTarget.Global);
+  authWarningShown = false;
   await startExecutor(context);
   if (lastExecutorState?.connection === 'online') {
     void vscode.window.showInformationMessage('已连接控制平面。');
@@ -273,6 +514,15 @@ async function commandClaimTask(context: vscode.ExtensionContext, arg?: unknown)
   }
   const task = await chooseTask(false, arg);
   if (task === undefined) {
+    return;
+  }
+  // docs/005 §2.5 preflight: never claim work we cannot execute safely.
+  const preflight = evaluatePreflight({
+    workspaceTrusted: vscode.workspace.isTrusted ?? true,
+    hasWorkspaceFolder: currentWorkspaceFolder() !== undefined,
+  });
+  if (!preflight.ok) {
+    void vscode.window.showWarningMessage(preflight.issues.map((issue) => `${issue.message} → ${issue.action}`).join('\n'));
     return;
   }
   try {
@@ -395,6 +645,64 @@ async function commandSubmitArtifact(context: vscode.ExtensionContext, arg?: unk
   }
 }
 
+/** Tree action: decide a pending gate without leaving the inbox (docs/005 §2.2). */
+async function commandApprovalAction(arg?: unknown): Promise<void> {
+  const approval = asApproval(arg);
+  if (approval === undefined || userClient === undefined) {
+    return;
+  }
+  const choice = await vscode.window.showQuickPick(
+    [
+      { label: '通过', description: 'approve', decision: 'approve' as const },
+      { label: '驳回', description: 'reject', decision: 'reject' as const },
+    ],
+    { placeHolder: `审批 ${approval.gateKey}（需求 ${approval.demandId}）` },
+  );
+  if (choice === undefined) {
+    return;
+  }
+  const comment = await vscode.window.showInputBox({
+    prompt: '审批意见（可留空）',
+    ignoreFocusOut: true,
+  });
+  if (comment === undefined) {
+    return;
+  }
+  try {
+    await userClient.decideApproval(approval.id, {
+      decision: choice.decision,
+      ...(comment.trim() === '' ? {} : { comment: comment.trim() }),
+    });
+    await refreshInbox();
+    void vscode.window.showInformationMessage(`审批已提交：${approval.gateKey} ${choice.label}。`);
+  } catch (error) {
+    if (error instanceof ControlPlaneError && error.status === 409) {
+      void vscode.window.showWarningMessage('该审批已被其他人处理，正在刷新任务箱。');
+      await refreshInbox();
+      return;
+    }
+    showActionableError(error, '提交审批失败');
+  }
+}
+
+/** Tree action: mark an unread notification as read. */
+async function commandReadNotification(arg?: unknown): Promise<void> {
+  const notification = asNotification(arg);
+  if (notification === undefined || userClient === undefined) {
+    return;
+  }
+  try {
+    await userClient.markNotificationRead(notification.id);
+    await refreshInbox();
+  } catch (error) {
+    if (error instanceof ControlPlaneError && error.status === 404) {
+      await refreshInbox();
+      return;
+    }
+    showActionableError(error, '标记通知已读失败');
+  }
+}
+
 async function commandToggleAccepting(context: vscode.ExtensionContext): Promise<void> {
   const next = !isAccepting();
   await configuration().update('accepting', next, vscode.ConfigurationTarget.Global);
@@ -405,6 +713,7 @@ async function commandToggleAccepting(context: vscode.ExtensionContext): Promise
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  extensionContext = context;
   inbox = new TaskInboxProvider();
   const treeView = vscode.window.createTreeView(INBOX_VIEW_ID, {
     treeDataProvider: inbox,
@@ -432,6 +741,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       commandSubmitArtifact(context, arg),
     ),
     vscode.commands.registerCommand('sapSuperAgent.toggleAccepting', () => commandToggleAccepting(context)),
+    // Context actions for the "等待我回答" group (not contributed to the palette).
+    vscode.commands.registerCommand(APPROVAL_ACTION_COMMAND, (arg?: unknown) => commandApprovalAction(arg)),
+    vscode.commands.registerCommand(READ_NOTIFICATION_COMMAND, (arg?: unknown) =>
+      commandReadNotification(arg),
+    ),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration(`${CONFIG_SECTION}.accepting`)) {
         runtime?.setAccepting(isAccepting());
@@ -471,6 +785,7 @@ export async function deactivate(): Promise<void> {
     clearInterval(refreshTimer);
     refreshTimer = undefined;
   }
+  stopEventStream();
   const current = runtime;
   runtime = undefined;
   await current?.stop({ unregister: true });
@@ -478,4 +793,12 @@ export async function deactivate(): Promise<void> {
   statusBar = undefined;
   inbox = undefined;
   client = undefined;
+  userClient = undefined;
+  extensionContext = undefined;
+  availableTasks = [];
+  waitingApprovals = [];
+  unreadNotifications = [];
+  lastWorkspaceFolder = undefined;
+  lastExecutorState = undefined;
+  authWarningShown = false;
 }

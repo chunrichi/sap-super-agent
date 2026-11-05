@@ -12,70 +12,7 @@ import {
   type TestServer,
 } from './helpers.js';
 
-interface Waiter {
-  predicate: (message: any) => boolean;
-  resolve: (message: any) => void;
-  timer: NodeJS.Timeout;
-}
-
-interface Probe {
-  socket: WebSocket;
-  messages: any[];
-  waitFor(predicate: (message: any) => boolean, timeoutMs?: number): Promise<any>;
-  closed: Promise<{ code: number; reason: string }>;
-}
-
-function openProbe(url: string): Promise<Probe> {
-  return new Promise((resolveProbe, rejectTimer) => {
-    const socket = new WebSocket(url);
-    const messages: any[] = [];
-    const waiters: Waiter[] = [];
-    socket.on('message', (data) => {
-      let parsed: any;
-      try {
-        parsed = JSON.parse(String(data));
-      } catch {
-        return;
-      }
-      messages.push(parsed);
-      for (const waiter of [...waiters]) {
-        if (!waiter.predicate(parsed)) continue;
-        clearTimeout(waiter.timer);
-        waiters.splice(waiters.indexOf(waiter), 1);
-        waiter.resolve(parsed);
-      }
-    });
-    const closed = new Promise<{ code: number; reason: string }>((resolveClose) => {
-      socket.once('close', (code, reason) => resolveClose({ code, reason: String(reason) }));
-    });
-    const probe: Probe = {
-      socket,
-      messages,
-      closed,
-      waitFor: (predicate, timeoutMs = 3_000) =>
-        new Promise((resolveMessage, rejectMessage) => {
-          const existing = messages.find(predicate);
-          if (existing !== undefined) {
-            resolveMessage(existing);
-            return;
-          }
-          const timer = setTimeout(() => {
-            const index = waiters.findIndex((candidate) => candidate.timer === timer);
-            if (index >= 0) waiters.splice(index, 1);
-            rejectMessage(new Error('timed out waiting for a WS message'));
-          }, timeoutMs);
-          waiters.push({ predicate, resolve: resolveMessage, timer });
-        }),
-    };
-    socket.once('open', () => resolveProbe(probe));
-    socket.once('error', (error) => rejectTimer(error));
-  });
-}
-
-function socketUrl(server: TestServer, token: string, after: number): string {
-  const wsBase = server.running.url.replace('http://', 'ws://');
-  return `${wsBase}/api/v1/events?token=${encodeURIComponent(token)}&after=${after}`;
-}
+import { openProbe, socketUrl } from './ws-helpers.js';
 
 describe('control-plane WebSocket event stream', () => {
   let server: TestServer;
@@ -92,7 +29,7 @@ describe('control-plane WebSocket event stream', () => {
     await createDemandWithArtifact(server);
     const { lastSeq } = await readEvents(server);
 
-    const full = await openProbe(socketUrl(server, server.userToken, 0));
+    const full = await openProbe(socketUrl(server.running.url, server.userToken, 0));
     try {
       const firstEvent = await full.waitFor((message) => message.seq === 1);
       expect(firstEvent.type).toBe('demand.created');
@@ -104,7 +41,7 @@ describe('control-plane WebSocket event stream', () => {
       full.socket.close();
     }
 
-    const tail = await openProbe(socketUrl(server, server.userToken, lastSeq - 2));
+    const tail = await openProbe(socketUrl(server.running.url, server.userToken, lastSeq - 2));
     try {
       await tail.waitFor((message) => message.seq === lastSeq - 1);
       await tail.waitFor((message) => message.seq === lastSeq);
@@ -119,7 +56,7 @@ describe('control-plane WebSocket event stream', () => {
 
   it('broadcasts newly appended events to connected clients', async () => {
     const { lastSeq } = await readEvents(server);
-    const probe = await openProbe(socketUrl(server, server.userToken, lastSeq));
+    const probe = await openProbe(socketUrl(server.running.url, server.userToken, lastSeq));
     try {
       const created = await api<{ demand: { id: string } }>(server, '/api/v1/demands', {
         method: 'POST',
@@ -144,7 +81,7 @@ describe('control-plane WebSocket event stream', () => {
 
   it('ignores invalid client frames and keeps the stream alive', async () => {
     const { lastSeq } = await readEvents(server);
-    const probe = await openProbe(socketUrl(server, server.userToken, lastSeq));
+    const probe = await openProbe(socketUrl(server.running.url, server.userToken, lastSeq));
     try {
       probe.socket.send('not-json');
       probe.socket.send(JSON.stringify({ type: 'client.pong' }));
@@ -172,7 +109,7 @@ describe('control-plane WebSocket event stream', () => {
   });
 
   it('closes the socket with 4401 when the token is invalid', async () => {
-    const socket = new WebSocket(socketUrl(server, 'not-a-real-token', 0));
+    const socket = new WebSocket(socketUrl(server.running.url, 'not-a-real-token', 0));
     const closed = await new Promise<{ code: number }>((resolveClose) => {
       socket.once('close', (code) => resolveClose({ code }));
       socket.once('error', () => undefined);
@@ -182,8 +119,11 @@ describe('control-plane WebSocket event stream', () => {
 
   it('offers newly created tasks as a transport frame, not as a persisted event', async () => {
     const { demandId } = await createDemandWithArtifact(server);
+    // S3: task.offered only goes to eligible executor connections, never user sockets.
+    const executor = await registerExecutor(server, 'DEV001');
+    await heartbeat(server, executor);
     const { lastSeq } = await readEvents(server);
-    const probe = await openProbe(socketUrl(server, server.userToken, lastSeq));
+    const probe = await openProbe(socketUrl(server.running.url, executor.token, lastSeq));
     try {
       const created = await createAdminTask(server, {
         demandId,
@@ -230,7 +170,7 @@ describe('control-plane WebSocket event stream', () => {
     expect(claimed.status).toBe(200);
 
     const { lastSeq } = await readEvents(server);
-    const probe = await openProbe(socketUrl(server, server.userToken, lastSeq));
+    const probe = await openProbe(socketUrl(server.running.url, executor.token, lastSeq));
     try {
       const released = await api(server, `/api/v1/tasks/${taskId}/release`, {
         method: 'POST',
@@ -252,7 +192,7 @@ describe('control-plane WebSocket event stream', () => {
     const pingServer = await startTestServer({ overrides: { wsPingMs: 30 } });
     try {
       const { lastSeq } = await readEvents(pingServer);
-      const probe = await openProbe(socketUrl(pingServer, pingServer.userToken, lastSeq));
+      const probe = await openProbe(socketUrl(pingServer.running.url, pingServer.userToken, lastSeq));
       try {
         const ping = await probe.waitFor((message) => message.type === 'server.ping');
         expect(ping.seq).toBe(lastSeq);
@@ -272,7 +212,7 @@ describe('control-plane WebSocket event stream', () => {
     try {
       await createDemandWithArtifact(resyncServer);
       await new Promise((resolveWait) => setTimeout(resolveWait, 200));
-      const probe = await openProbe(socketUrl(resyncServer, resyncServer.userToken, 0));
+      const probe = await openProbe(socketUrl(resyncServer.running.url, resyncServer.userToken, 0));
       try {
         const frame = await probe.waitFor((message) => message.type === 'resync_required');
         expect(frame.lastSeq).toBeGreaterThan(1);

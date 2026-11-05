@@ -11,9 +11,10 @@ import {
   wsConnectQuerySchema,
   type EventEnvelope,
   type Task,
+  type TokenKind,
   type WsTaskOfferedFrame,
 } from '@sap-superagent/protocol';
-import { verifyToken } from '../auth.js';
+import { verifyToken, type TokenClaims } from '../auth.js';
 import { eventSeqWindow, listEventsAfter } from '../db/events.js';
 
 export interface EventSocketHubOptions {
@@ -22,6 +23,20 @@ export interface EventSocketHubOptions {
   path: string;
   clock: () => number;
   pingIntervalMs?: number;
+  /**
+   * S3 (docs/003 §3/§4.4): per-connection offer filtering. Called for every
+   * `task.offered` frame before it is sent to an executor-bound socket; the
+   * server wires it to the same claim eligibility used by REST/claim. Absent
+   * filter = send to every executor-bound socket (transport-only default).
+   */
+  offerFilter?: (executorId: string, task: Task, atIso: string) => boolean;
+}
+
+/** Identity bound to one WS connection for its whole lifetime. */
+interface ConnectionIdentity {
+  kind: TokenKind;
+  /** Set only for `executor` tokens (S3): offers are filtered per executor. */
+  executorId: string | null;
 }
 
 const DEFAULT_PING_INTERVAL_MS = 20_000;
@@ -35,7 +50,8 @@ export class EventSocketHub {
   private readonly clock: () => number;
   private readonly pingIntervalMs: number;
   private readonly wss = new WebSocketServer({ noServer: true });
-  private readonly clients = new Set<WebSocket>();
+  private readonly clients = new Map<WebSocket, ConnectionIdentity>();
+  private readonly offerFilter: EventSocketHubOptions['offerFilter'];
   private server: Server | null = null;
   private pingTimer: NodeJS.Timeout | null = null;
   private closed = false;
@@ -46,6 +62,7 @@ export class EventSocketHub {
     this.path = options.path;
     this.clock = options.clock;
     this.pingIntervalMs = options.pingIntervalMs ?? DEFAULT_PING_INTERVAL_MS;
+    this.offerFilter = options.offerFilter;
   }
 
   attach(server: Server): void {
@@ -59,7 +76,7 @@ export class EventSocketHub {
   broadcast(events: readonly EventEnvelope[]): void {
     if (this.closed || this.clients.size === 0) return;
     const frames = events.map((event) => JSON.stringify(event));
-    for (const client of this.clients) {
+    for (const client of this.clients.keys()) {
       if (client.readyState !== WebSocket.OPEN) continue;
       for (const frame of frames) client.send(frame);
     }
@@ -69,6 +86,10 @@ export class EventSocketHub {
    * Offer a claimable task to connected clients (`task.offered`). This is a
    * transport-only hint: it is NOT written to the event log (docs/003 §2.3), so
    * it carries no `seq`; clients pull authoritative state over REST.
+   *
+   * S3: only executor-bound connections whose eligibility is confirmed by the
+   * injected `offerFilter` receive the frame; `user`/`admin` sockets only get
+   * the event stream.
    */
   broadcastTaskOffered(task: Task, at: string): void {
     if (this.closed || this.clients.size === 0) return;
@@ -88,7 +109,11 @@ export class EventSocketHub {
       },
     };
     const payload = JSON.stringify(frame);
-    for (const client of this.clients) {
+    for (const [client, identity] of this.clients) {
+      if (identity.executorId === null) continue;
+      if (this.offerFilter !== undefined && !this.offerFilter(identity.executorId, task, at)) {
+        continue;
+      }
       if (client.readyState === WebSocket.OPEN) client.send(payload);
     }
   }
@@ -104,7 +129,7 @@ export class EventSocketHub {
       this.server.off('upgrade', this.handleUpgrade);
       this.server = null;
     }
-    for (const client of this.clients) client.terminate();
+    for (const client of this.clients.keys()) client.terminate();
     this.clients.clear();
     await new Promise<void>((resolve) => {
       this.wss.close(() => resolve());
@@ -119,7 +144,7 @@ export class EventSocketHub {
       seq: lastSeq,
       at: new Date(this.clock()).toISOString(),
     });
-    for (const client of this.clients) {
+    for (const client of this.clients.keys()) {
       if (client.readyState === WebSocket.OPEN) client.send(frame);
     }
   }
@@ -145,17 +170,18 @@ export class EventSocketHub {
         ws.close(4401, 'unauthorized');
         return;
       }
+      let claims: TokenClaims;
       try {
-        verifyToken(parsed.data.token, this.secret);
+        claims = verifyToken(parsed.data.token, this.secret);
       } catch {
         ws.close(4401, 'unauthorized');
         return;
       }
-      this.handleConnection(ws, parsed.data.after);
+      this.handleConnection(ws, parsed.data.after, claims);
     });
   };
 
-  private handleConnection(ws: WebSocket, after: number): void {
+  private handleConnection(ws: WebSocket, after: number, claims: TokenClaims): void {
     const window = eventSeqWindow(this.db);
     const needsResync =
       (after > 0 && after < window.earliestSeq - 1) ||
@@ -173,7 +199,12 @@ export class EventSocketHub {
         ws.send(JSON.stringify(event));
       }
     }
-    this.clients.add(ws);
+    // S3: bind the token identity for the socket lifetime. Only executor tokens
+    // carry an executorId; user/admin sockets receive the event stream only.
+    this.clients.set(ws, {
+      kind: claims.kind,
+      executorId: claims.kind === 'executor' ? (claims.executorId ?? null) : null,
+    });
     ws.on('message', (raw) => this.handleClientMessage(raw));
     ws.on('close', () => this.clients.delete(ws));
     ws.on('error', () => this.clients.delete(ws));

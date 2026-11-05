@@ -1,0 +1,380 @@
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { afterEach, describe, expect, it } from 'vitest';
+import { FakeModelProvider } from '@sap-superagent/ai';
+import {
+  issueToken,
+  loadOrCreateStateSecret,
+  startServer,
+  type RunningServer,
+} from '@sap-superagent/server';
+import {
+  hookEnvelopeSchema,
+  type EventEnvelope,
+  type HookEnvelope,
+} from '@sap-superagent/protocol';
+import {
+  FakeHookTarget,
+  apiRequest,
+  computeFakeHookSignature,
+  createTempStateDir,
+  removeTempStateDir,
+  resolveTemplatesDir,
+  waitFor,
+} from '../src/index.js';
+
+// ---------------------------------------------------------------------------
+// S4 integration: generic Hook outbound queue (docs/008 §2/§5/§6, docs/009 #11).
+//
+// Covers task-book §1.3: 2xx delivery + HMAC/envelope, 5xx backoff retry, 4xx
+// dead letter, 429 Retry-After, timeout retry, unknown eventVersion DLQ and
+// demand-cancel cancellation. The target is the in-process FakeHookTarget, so
+// everything runs offline and fast.
+// ---------------------------------------------------------------------------
+
+const templatesDir = resolveTemplatesDir();
+const HOOK_SECRET = 'it-generic-hook-secret';
+
+interface HookTestContext {
+  server: RunningServer;
+  target: FakeHookTarget;
+  stateDir: string;
+  userToken: string;
+  adminToken: string;
+  dispose(): Promise<void>;
+}
+
+interface BootOptions {
+  events: string[];
+  env?: Record<string, string>;
+  /** Additional hooks appended to the config file (already YAML fragments). */
+  hooksYaml?: string;
+}
+
+const contexts: HookTestContext[] = [];
+
+function hookYaml(url: string, events: string[]): string {
+  return `
+hooks:
+  - id: http-example
+    target: http
+    url: ${url}
+    events: [${events.join(', ')}]
+    secretRef: env:SA_HOOKS_HTTP_SECRET
+    enabled: true
+    retry: { maxAttempts: 5 }
+`;
+}
+
+async function bootHooks(options: BootOptions): Promise<HookTestContext> {
+  const target = new FakeHookTarget({ secret: HOOK_SECRET });
+  await target.start();
+  const stateDir = await createTempStateDir('sa-hooks-it-');
+  const configPath = join(stateDir, 'hooks.yaml');
+  const yaml = options.hooksYaml ?? hookYaml(target.hookUrl, options.events);
+  writeFileSync(configPath, yaml, 'utf8');
+  const secret = loadOrCreateStateSecret(stateDir);
+  const server = await startServer({
+    stateDir,
+    templatesDir,
+    port: 0,
+    aiProvider: new FakeModelProvider(),
+    leaseTtlMs: 60_000,
+    presenceTtlMs: 60_000,
+    heartbeatSweepMs: 25,
+    stagePollMs: 10,
+    env: {
+      SA_HOOKS_CONFIG: configPath,
+      SA_HOOKS_HTTP_SECRET: HOOK_SECRET,
+      SA_HOOKS_POLL_MS: '10',
+      SA_HOOKS_RETRY_BASE_MS: '10',
+      SA_HOOKS_RETRY_MAX_MS: '40',
+      SA_HOOKS_TIMEOUT_MS: '150',
+      ...options.env,
+    },
+  });
+  const context: HookTestContext = {
+    server,
+    target,
+    stateDir,
+    userToken: issueToken({ kind: 'user', sub: 'hook-user', secret }),
+    adminToken: issueToken({ kind: 'admin', sub: 'hook-admin', secret }),
+    dispose: async () => {
+      await server.close();
+      await target.close();
+      await removeTempStateDir(stateDir);
+    },
+  };
+  contexts.push(context);
+  return context;
+}
+
+afterEach(async () => {
+  while (contexts.length > 0) {
+    const context = contexts.pop();
+    if (context !== undefined) await context.dispose();
+  }
+});
+
+function dbPath(context: HookTestContext): string {
+  return join(context.stateDir, 'state.db');
+}
+
+/** Read-only helper (the server owns the writes; we only assert persisted state). */
+function queryDb<T>(context: HookTestContext, sql: string, ...params: Array<string | number>): T[] {
+  const db = new DatabaseSync(dbPath(context));
+  try {
+    db.exec('PRAGMA busy_timeout = 2000;');
+    return db.prepare(sql).all(...params) as unknown as T[];
+  } finally {
+    db.close();
+  }
+}
+
+function executeDb(context: HookTestContext, sql: string, ...params: Array<string | number>): void {
+  const db = new DatabaseSync(dbPath(context));
+  try {
+    db.exec('PRAGMA busy_timeout = 2000;');
+    db.prepare(sql).run(...params);
+  } finally {
+    db.close();
+  }
+}
+
+async function createDemand(context: HookTestContext, title: string): Promise<string> {
+  const response = await apiRequest<{ demand: { id: string } }>(context.server.url, '/api/v1/demands', {
+    method: 'POST',
+    token: context.userToken,
+    body: {
+      title,
+      description: '按销售组织汇总开票金额，空结果返回 0',
+      acceptanceCriteria: ['金额与 MARA 一致', '空结果返回 0'],
+      priority: 'normal',
+      requester: { userId: 'REQ001', orgUnit: 'PDO' },
+    },
+  });
+  expect(response.status, JSON.stringify(response.body)).toBe(200);
+  return response.body.demand.id;
+}
+
+async function events(context: HookTestContext): Promise<EventEnvelope[]> {
+  const response = await apiRequest<{ events: EventEnvelope[] }>(
+    context.server.url,
+    '/api/v1/events?after=0&limit=500',
+    { token: context.adminToken },
+  );
+  expect(response.status).toBe(200);
+  return response.body.events;
+}
+
+async function waitForEvent(
+  context: HookTestContext,
+  type: string,
+  predicate: (event: EventEnvelope) => boolean = () => true,
+): Promise<EventEnvelope> {
+  return waitFor(
+    async () => (await events(context)).find((event) => event.type === type && predicate(event)),
+    { timeoutMs: 5_000, label: `hook event ${type}`, intervalMs: 10 },
+  );
+}
+
+async function waitForOutboxStatus(
+  context: HookTestContext,
+  status: string,
+  eventId?: string,
+): Promise<{ id: string; status: string; attempts: number; last_error: string | null; payload: string }> {
+  return waitFor(
+    async () => {
+      const rows = queryDb<{
+        id: string;
+        status: string;
+        attempts: number;
+        last_error: string | null;
+        payload: string;
+      }>(context, `SELECT * FROM outbox WHERE target = 'hook:http-example' ORDER BY created_at ASC`);
+      return rows.find(
+        (row) => row.status === status && (eventId === undefined || row.id.startsWith(`${eventId}:`)),
+      );
+    },
+    { timeoutMs: 5_000, label: `outbox ${status}`, intervalMs: 10 },
+  );
+}
+
+describe('generic Hook outbound delivery (docs/008 §5)', () => {
+  it('delivers the uniform envelope with valid HMAC headers and records hook.delivered', async () => {
+    const context = await bootHooks({ events: ['demand.created'] });
+    const demandId = await createDemand(context, 'R-3001 Hook 成功投递');
+
+    const delivery = await context.target.waitForDelivery();
+    const envelope = JSON.parse(delivery.body) as HookEnvelope;
+    expect(hookEnvelopeSchema.safeParse(envelope).success).toBe(true);
+    expect(envelope).toMatchObject({
+      eventType: 'demand.created',
+      eventVersion: 1,
+      subject: { type: 'demand', demandId },
+    });
+    expect(envelope.payload['demandId']).toBe(demandId);
+
+    // Independent HMAC check: X-SA-Signature over the exact raw body.
+    expect(delivery.headers['x-sa-signature']).toBe(
+      computeFakeHookSignature(HOOK_SECRET, delivery.body),
+    );
+    expect(delivery.headers['x-sa-delivery']).toBe(envelope.idempotencyKey);
+    expect(delivery.headers['x-sa-timestamp']).toBeDefined();
+    expect(delivery.headers['content-type']).toContain('application/json');
+
+    const delivered = await waitForEvent(context, 'hook.delivered', (event) => {
+      return (event.data['eventId'] ?? '') === envelope.eventId;
+    });
+    expect(delivered.subject).toEqual({ type: 'hook', id: 'http-example' });
+    expect(delivered.data).toMatchObject({
+      hookId: 'http-example',
+      target: 'hook:http-example',
+      attempt: 1,
+      externalId: 'EXT-1',
+    });
+
+    const row = await waitForOutboxStatus(context, 'SENT');
+    expect(row.attempts).toBe(1);
+    expect(queryDb(context, `SELECT COUNT(*) AS total FROM outbox WHERE target LIKE 'hook:%'`)).toEqual([
+      { total: 1 },
+    ]);
+  });
+
+  it('retries 5xx with exponential backoff until success (hook.attempted per attempt)', async () => {
+    const context = await bootHooks({ events: ['demand.created'] });
+    context.target.injectFault({ kind: 'status', status: 500 });
+    context.target.injectFault({ kind: 'status', status: 503 });
+    await createDemand(context, 'R-3002 Hook 5xx 重试');
+
+    await waitFor(async () => (context.target.orders.size > 0 ? true : undefined), {
+      timeoutMs: 5_000,
+      label: 'delivery after two 5xx',
+      intervalMs: 10,
+    });
+    expect(context.target.deliveries).toHaveLength(3);
+    expect(context.target.deliveries.map((request) => request.headers['x-sa-delivery'])).toEqual([
+      context.target.deliveries[0]?.headers['x-sa-delivery'],
+      context.target.deliveries[0]?.headers['x-sa-delivery'],
+      context.target.deliveries[0]?.headers['x-sa-delivery'],
+    ]);
+
+    const attempted = (await events(context)).filter((event) => event.type === 'hook.attempted');
+    expect(attempted).toHaveLength(2);
+    expect(attempted.map((event) => event.data['attempt'])).toEqual([1, 2]);
+    expect(String(attempted[0]?.data['error'])).toContain('HTTP 500');
+    expect(String(attempted[1]?.data['error'])).toContain('HTTP 503');
+
+    const row = await waitForOutboxStatus(context, 'SENT');
+    expect(row.attempts).toBe(3);
+    expect((await events(context)).some((event) => event.type === 'hook.delivered')).toBe(true);
+  });
+
+  it('dead-letters 4xx immediately with lastError and hook.dead', async () => {
+    const context = await bootHooks({ events: ['demand.created'] });
+    context.target.injectFault({ kind: 'status', status: 400, body: { error: 'invalid field' } });
+    await createDemand(context, 'R-3003 Hook 4xx 死信');
+
+    const row = await waitForOutboxStatus(context, 'DEAD');
+    expect(row.attempts).toBe(1);
+    expect(row.last_error).toContain('HTTP 400');
+    expect(row.last_error).toContain('invalid field');
+    const dead = await waitForEvent(context, 'hook.dead');
+    expect(dead.data).toMatchObject({ hookId: 'http-example', attempt: 1 });
+    expect(context.target.orders.size).toBe(0);
+    expect((await events(context)).some((event) => event.type === 'hook.delivered')).toBe(false);
+  });
+
+  it('honours Retry-After on 429 and still delivers', async () => {
+    const context = await bootHooks({ events: ['demand.created'] });
+    context.target.injectFault({
+      kind: 'status',
+      status: 429,
+      headers: { 'retry-after': '0' },
+      body: { error: 'rate limited' },
+    });
+    await createDemand(context, 'R-3004 Hook 429');
+    await waitFor(async () => (context.target.orders.size > 0 ? true : undefined), {
+      timeoutMs: 5_000,
+      label: 'delivery after 429',
+      intervalMs: 10,
+    });
+    const attempted = (await events(context)).filter((event) => event.type === 'hook.attempted');
+    expect(attempted).toHaveLength(1);
+    expect(String(attempted[0]?.data['error'])).toContain('HTTP 429');
+    expect((await waitForOutboxStatus(context, 'SENT')).attempts).toBe(2);
+  });
+
+  it('retries timeouts and reaches the target on the next attempt', async () => {
+    const context = await bootHooks({ events: ['demand.created'] });
+    context.target.injectFault({ kind: 'timeout', delayMs: 400 });
+    await createDemand(context, 'R-3005 Hook 超时重试');
+    await waitFor(async () => (context.target.orders.size > 0 ? true : undefined), {
+      timeoutMs: 5_000,
+      label: 'delivery after timeout',
+      intervalMs: 10,
+    });
+    const failed = (await events(context)).find((event) => event.type === 'hook.attempted');
+    expect(String(failed?.data['error'])).toContain('request failed');
+    expect((await waitForOutboxStatus(context, 'SENT')).attempts).toBe(2);
+  });
+
+  it('dead-letters an unsupported envelope eventVersion instead of sending it', async () => {
+    const context = await bootHooks({ events: ['demand.created'] });
+    // Let the enqueue cursor advance past existing events, then inject a row.
+    await createDemand(context, 'R-3006 Hook 版本校验');
+    await waitForOutboxStatus(context, 'SENT');
+
+    const bogus: HookEnvelope = {
+      eventId: '01J8ZQ9W3K5M2V7X4C6B8N0P1Q',
+      eventType: 'demand.created',
+      eventVersion: 99,
+      occurredAt: '2026-11-05T12:00:00.000Z',
+      subject: { type: 'demand', id: '4a3f9c2e7b1d48f0a6c5e2d9b8f7a1c3' },
+      payload: {},
+      idempotencyKey: '4a3f9c2e7b1d48f0a6c5e2d9b8f7a1c3:http-example:deadbeef',
+      retry: { maxAttempts: 5, backoff: 'exponential', deadLetter: true },
+      traceId: '01J8ZQ9W3K5M2V7X4C6B8N0P1Q',
+    };
+    executeDb(
+      context,
+      `INSERT INTO outbox (id, event_seq, target, payload, status, attempts, next_attempt_at, created_at, updated_at)
+       VALUES (?, 0, 'hook:http-example', ?, 'PENDING', 0, ?, ?, ?)`,
+      'bogus-event:http-example',
+      JSON.stringify(bogus),
+      new Date().toISOString(),
+      new Date().toISOString(),
+      new Date().toISOString(),
+    );
+    const dead = await waitForEvent(context, 'hook.dead', (event) => {
+      return String(event.data['error'] ?? '').includes('unsupported_event_version');
+    });
+    expect(dead.data['error']).toContain('supported 1');
+    expect(context.target.deliveries).toHaveLength(1); // only the first, valid delivery
+  });
+
+  it('cancels not-yet-sent hooks when the demand is cancelled', async () => {
+    const context = await bootHooks({
+      events: ['demand.created'],
+      env: { SA_HOOKS_RETRY_BASE_MS: '250', SA_HOOKS_RETRY_MAX_MS: '250' },
+    });
+    context.target.injectFault({ kind: 'status', status: 500 });
+    const demandId = await createDemand(context, 'R-3007 Hook 取消');
+    await waitForEvent(context, 'hook.attempted');
+
+    const cancelled = await apiRequest(context.server.url, `/api/v1/demands/${demandId}/cancel`, {
+      method: 'POST',
+      token: context.userToken,
+      body: { reason: 'test cancel' },
+    });
+    expect(cancelled.status).toBe(200);
+
+    const row = await waitForOutboxStatus(context, 'CANCELLED');
+    expect(row.last_error).toContain('cancelled_by:demand.cancelled');
+    const cancelledEvent = await waitForEvent(context, 'hook.cancelled', (event) => {
+      return event.data['reason'] === 'demand.cancelled';
+    });
+    expect(cancelledEvent.data).toMatchObject({ hookId: 'http-example', delivered: false });
+  });
+});

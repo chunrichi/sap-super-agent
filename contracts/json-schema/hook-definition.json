@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,31}$"
+    },
+    "target": {
+      "type": "string",
+      "const": "http"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "events": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "demand.created",
+          "demand.updated",
+          "demand.cancelled",
+          "stage.ready",
+          "stage.started",
+          "stage.done",
+          "stage.failed",
+          "stage.waiting_human",
+          "stage.cancelled",
+          "task.created",
+          "task.offered",
+          "task.claimed",
+          "task.updated",
+          "task.progress",
+          "task.completed",
+          "task.failed",
+          "task.released",
+          "task.transferred",
+          "task.cancelled",
+          "assignment.created",
+          "assignment.completed",
+          "assignment.released",
+          "assignment.expired",
+          "artifact.created",
+          "artifact.approved",
+          "artifact.rejected",
+          "artifact.stale",
+          "approval.requested",
+          "approval.decided",
+          "approval.expired",
+          "approval.withdrawn",
+          "executor.registered",
+          "executor.offline",
+          "hook.attempted",
+          "hook.delivered",
+          "hook.dead",
+          "hook.receipt",
+          "hook.cancelled"
+        ]
+      }
+    },
+    "secretRef": {
+      "type": "string",
+      "pattern": "^env:[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "enabled": {
+      "default": false,
+      "type": "boolean"
+    },
+    "retry": {
+      "type": "object",
+      "properties": {
+        "maxAttempts": {
+          "default": 5,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 20
+        },
+        "backoff": {
+          "default": "exponential",
+          "type": "string",
+          "enum": [
+            "exponential"
+          ]
+        },
+        "deadLetter": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "maxAttempts",
+        "backoff",
+        "deadLetter"
+      ],
+      "additionalProperties": false
+    },
+    "reconcileUrl": {
+      "type": "string",
+      "format": "uri"
+    },
+    "advanceOnReceipt": {
+      "default": false,
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "id",
+    "target",
+    "url",
+    "events",
+    "secretRef",
+    "enabled",
+    "advanceOnReceipt"
+  ],
+  "additionalProperties": false
+}

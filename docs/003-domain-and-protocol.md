@@ -184,7 +184,7 @@ Assignment 状态：`active → completed | released | expired`。
 ### 4.1 通用约定
 
 - Base：`/api/v1`；所有响应 JSON。时间一律 ISO-8601 UTC。控制平面生成的实体（stageRun/task/assignment/approval/event）用 ULID；来自外部系统的实体沿用外部主键并用 `externalId` 标注：`demandId` 用 SAP UUID C32，控制平面不再二次生成。
-- 认证：`Authorization: Bearer <token>`。token 类型：`user`（审批/查看）、`executor`（任务操作）、`admin`（运维）。M1 本地模式用 CLI 签发的静态 token；M2/M3 首次登录用 OAuth 2.0 Device Authorization Grant（RFC 8628）换取短期 JWT + refresh token；客户端把 refresh token 存 VSCode `SecretStorage`，不落工作区文件。SAP 入站用 `X-SA-Signature: hmac-sha256(body, secret)` + `X-SA-Timestamp`（±5 分钟）+ `X-SA-Delivery`（幂等键）。
+- 认证：`Authorization: Bearer <token>`。token 类型：`user`（审批/查看）、`executor`（任务操作）、`admin`（运维）。M1 本地模式用 CLI 签发的静态 token；M2/M3 首次登录用 OAuth 2.0 Device Authorization Grant（RFC 8628）换取短期 JWT + refresh token；客户端把 refresh token 存 VSCode `SecretStorage`，不落工作区文件。SAP 入站（§4.5）与通用 Hook 入站（§4.7）共用同一套 webhook 规则：`X-SA-Signature: hmac-sha256(body, secret)` + `X-SA-Timestamp`（±5 分钟）+ `X-SA-Delivery`（幂等键）；两者都不使用 Bearer token，secret 按 `env:NAME` 引用、只在服务端读取。
 - 写操作支持 `Idempotency-Key`，服务端保留 24h 结果。
 - 乐观并发：任务/工件更新可带 `If-Match: <version>`；不一致返回 `409 conflict`。
 - 错误体：`{"error":{"code":"lease_expired","message":"...","retryable":true,"details":{}}}`；`429` 带 `Retry-After`。
@@ -246,12 +246,16 @@ Assignment 状态：`active → completed | released | expired`。
 | 服务端→客户端 | `task.offered` / `task.updated` / `task.cancelled` / `task.transferred` | 新可领取任务、租约状态变化、任务取消、任务转交 |
 | 服务端→客户端 | `approval.requested` / `approval.decided` / `approval.expired` / `approval.withdrawn` | 门禁请求、决策、超时、撤回 |
 | 服务端→客户端 | `artifact.stale` / `demand.updated` | 上游新版本使下游工件 stale、需求状态变化 |
+| 服务端→客户端 | `hook.attempted` / `hook.delivered` / `hook.dead` / `hook.cancelled` | 通用 Hook 的一次投递尝试失败、投递成功、进入死信、取消（持久事件，`subject.type=hook`，`subject.id=<hookId>`；`GET /hooks` 读 outbox 与这些事件） |
+| 服务端→客户端 | `hook.receipt` | 外部系统入站回执落库（持久事件，`subject.type=hook`；见 §4.7） |
 | 服务端→客户端 | `server.ping` | 保活与时钟校准 |
 | 客户端→服务端 | `client.pong` / `client.ack {seq}` | 保活与游标确认 |
 
 只推送**摘要**；工件内容与上下文包走 REST 按需拉取，避免大消息与重复传输。
 
 `task.offered` 是**传输帧而非事件**（§2.3：不持久化）：`{type:"task.offered", at, subject:{type:"task",id}, task:{id,demandId,title,executorKind,requiredRoles,workspaceBinding,priority,dueAt}}`，不带 `seq`；任务新建或回池（租约过期、主动 release、转交、执行器下线释放）时推送，客户端据此刷新可领取列表，权威状态仍以 REST/事件日志为准。**S3 起按执行器资格过滤**：连接在握手时绑定 `executorId`（`executor` token），推送前用与 claim 相同的 §3 规则 1–6 实时判定，只发给当前有资格领取的在线执行器；`user`/`admin` 连接只收事件流、不收该帧。客户端断线重连携带 `lastSeq`；游标超出保留窗口时用 `resync_required` 控制帧要求全量拉取。`task.updated`/`task.cancelled`/`task.transferred` 走统一事件 envelope（不按执行器过滤）。
+
+`hook.*` 事件是持久事件（进事件日志、可补拉），`subject.type=hook` 是 S4 新增的 subject 类型；它们不推给执行器做任务提示，运维面读取 outbox 深度与最近一次尝试摘要（§4.7）。
 
 ### 4.5 SAP 入站 webhook
 
@@ -264,6 +268,8 @@ Assignment 状态：`active → completed | released | expired`。
 | `artifact.approved` / `artifact.rejected` | 门禁结果 | 解决对应 Approval，推进/退回阶段 |
 | `demand.cancelled` | 取消 | 取消需求与所有任务 |
 | `hook.receipt` | 外部系统完成（JIRA/CHARM 回执） | 记录 Hook 回执，推进阶段 |
+
+通用 Hook（JIRA/CHARM/Confluence/Teams 等）走 §4.7 的配置驱动出站 + 独立回执端点；本节 SAP 路径保持不变（`/hooks/sap` 仍由 SAP 专用的投递幂等表负责），两者共用 webhook 签名头但不共享状态。
 
 ### 4.6 示例：一次领取与提交
 
@@ -279,6 +285,41 @@ Assignment 状态：`active → completed | released | expired`。
     "contentRef": "artifact://01J9.../v1", "checksum": "sha256:..." }, "taskState": "in_progress" }
 ```
 
+### 4.7 通用 Hook 协议（S4）
+
+Hook 是控制平面对外部系统的唯一扩展入口（契约见 [008-hooks.md](008-hooks.md)）。v1 只实现 `http` 目标：配置文件（`SA_HOOKS_CONFIG`，默认 `examples/hooks.yaml`）声明订阅的**持久事件类型**，事件提交后由出站队列投递统一信封；外部系统用 HMAC 回执。文件缺失或全部 `enabled: false` 时 Hook 完全禁用，不影响 H0–S3 行为。
+
+配置（可执行格式见 008 §6）：
+
+| 字段 | 说明 |
+| --- | --- |
+| `id` | lower-kebab-case，唯一；outbox `target='hook:<id>'`、URL `{id}`/`{target}` 都用它 |
+| `target` | v1 只有 `http` |
+| `url` | 出站 POST 地址（http/https） |
+| `events` | 订阅的持久事件类型（§4.4）；禁止订阅 `hook.*`（会形成回环），启动校验拒绝 |
+| `secretRef` | `env:NAME`；只用于出站 HMAC 与入站回执验签，不落库/日志 |
+| `enabled` | 默认 `false`（示例文件全禁用） |
+| `retry` | `{maxAttempts, backoff: "exponential", deadLetter}`，默认 5 次 / 2s 起 / 上限 5min |
+| `reconcileUrl` | 可选；`pnpm hooks:reconcile` 拉外部列表做双向比对 |
+| `advanceOnReceipt` | 预留，v1 必须为 `false`（回执只记录，不推进阶段） |
+
+端点（与 SAP 一样挂在根路径，供外部系统直接调用；管理端点用 admin token）：
+
+| 方法 | 路径 | 认证 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/hooks` | `admin` | 每个配置 Hook 的 `enabled`/`events`/outbox 深度（pending/sent/dead/cancelled）/`lastError`/最近一次尝试摘要 |
+| POST | `/hooks/{id}/replay` | `admin` + `Idempotency-Key` | body `{eventId}`；把该 Hook 对应 outbox 行重置为待投递（死信/已发/已取消皆可），保持 `idempotencyKey` 不变；重复 replay 靠 `Idempotency-Key` 幂等 |
+| POST | `/hooks/{target}/receipt` | HMAC（`X-SA-*`） | 外部系统回执；body 见 008 §4；重复回执幂等（`duplicate:true`），未知 `externalId` 只记录 |
+
+出站语义：
+
+- 每次尝试写 `hook.attempted`，成功写 `hook.delivered`（外部响应里的 `externalId`/`id`/`key` 可空），最终失败写 `hook.dead`；4xx 立即死信，5xx/429/超时按指数退避重试，429 尊重 `Retry-After`。
+- 发送前用 `hookEnvelopeSchema` 校验落地信封（含 `eventVersion=1`）；校验失败或未知版本直接进死信，不静默丢弃。
+- 需求取消 / 阶段退回（`demand.cancelled`、`stage.cancelled`、`artifact.rejected`）时，同需求未发送的 Hook 行标 `cancelled` 并写 `hook.cancelled`；已发送的 v1 只记录、不补发关闭动作。
+- 回执落 `hook_receipts`（迁移 v6，只追加）+ `hook.receipt` 事件；v1 **只记录不推进阶段**，`advanceOnReceipt=true` 在启动时报"改成 false 或等待 v1.1"。
+
+对账：`pnpm hooks:reconcile` 只读；报告两类差异（外部有、控制平面无；控制平面有、外部无 = delivered 超 SLA 无回执 / 死信 / 未知回执），有差异默认退出码 0、`--fail-on-diff` 时 3。
+
 ## 5. 工件与上下文
 
 - **存储可插拔**：本地文件（M1）、S3/对象存储（M2）、SAP 附件/内容仓库（M3）。控制平面只存元数据、checksum 与引用。M1 实现补充：本地模式把内容写到 `SA_STATE_DIR/artifacts/<artifactId>/v<n>.bin`，接口只接受 `contentBase64`（`contentUrl` 预留给 M2 对象存储）；checksum 必须等于解码后字节的 sha256。
@@ -292,6 +333,6 @@ Assignment 状态：`active → completed | released | expired`。
 | 需求来源 | `SourceAdapter`：`ingest(event)` / `writeBack(demand)` / `reconcile()` | 本地 REST、SAP ICF JSON + webhook | JIRA、ServiceNow |
 | 执行器 | 4.2 协议 | `vscode`、`server-ai` | CI、ABAP 传输、DSH session |
 | AI 阶段 | `AiStage`：`buildPrompt(ctx)` / `outputSchema` / `model` / `maxCostUsd` | 受理澄清、需求分析、开发说明、测试文档、知识归档（`packages/ai` 注册表，按 stage key 解析） | 更多模板 |
-| Hook 目标 | `HookTarget`：`event` / `payload(demand, artifact)` / `send()` / `idempotencyKey` | 契约见 [008-hooks.md](008-hooks.md)，v1 提供 `http` 示例 | JIRA、CHARM、Confluence、Teams |
+| Hook 目标 | `HookTarget`：`event` / `payload(demand, artifact)` / `send()` / `idempotencyKey` | S4：配置驱动订阅 + `http` 目标 + 出站队列/重试/死信/重放 + 入站回执（§4.7，契约 [008-hooks.md](008-hooks.md)） | JIRA、CHARM、Confluence、Teams（只提供配置样例，见 `examples/hooks/`） |
 | 存储 | `Repository` / `ArtifactStore` / `EventStore` | SQLite + FS；Postgres 可选 | SAP HANA |
 | 身份 | `TokenValidator` | 本地签发 token | OIDC / SAP SSO |

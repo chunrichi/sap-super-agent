@@ -88,6 +88,35 @@ const examples = {
     contextUrl: '/api/v1/tasks/01J8ZQ9W3K5M2V7X4C6B8N0P1Q/context',
     serverTime: '2026-11-04T12:00:00.000Z',
   },
+  // --- S4: generic Hook contract (docs/008 §2/§4) ---
+  'hook-envelope.json': {
+    eventId: '01J8ZQ9W3K5M2V7X4C6B8N0P1Q',
+    eventType: 'artifact.approved',
+    eventVersion: 1,
+    occurredAt: '2026-11-05T12:00:00.000Z',
+    subject: {
+      type: 'artifact',
+      id: '01J8ZQ9W3K5M2V7X4C6B8N0P1R',
+      demandId: '4a3f9c2e7b1d48f0a6c5e2d9b8f7a1c3',
+      stageRunId: '01J8ZQ9W3K5M2V7X4C6B8N0P1S',
+      artifactId: '01J8ZQ9W3K5M2V7X4C6B8N0P1R',
+      version: 2,
+    },
+    payload: { artifactId: '01J8ZQ9W3K5M2V7X4C6B8N0P1R', gateKey: 'G1' },
+    idempotencyKey: '4a3f9c2e7b1d48f0a6c5e2d9b8f7a1c3:http-example:9f2c0a',
+    retry: { maxAttempts: 5, backoff: 'exponential', deadLetter: true },
+    traceId: '01J8ZQ9W3K5M2V7X4C6B8N0P1Q',
+  },
+  'hook-receipt-body.json': {
+    eventType: 'hook.receipt',
+    idempotencyKey: 'JIRA-1234:created',
+    occurredAt: '2026-11-05T12:03:00.000Z',
+    payload: {
+      externalId: 'JIRA-1234',
+      status: 'created',
+      detailRef: 'https://jira.example.com/browse/JIRA-1234',
+    },
+  },
 };
 
 // The committed examples must validate against the schemas they illustrate.
@@ -97,6 +126,8 @@ const EXAMPLE_SCHEMA_MAP = {
   'create-demand-body.json': 'create-demand-body',
   'register-executor-body.json': 'register-executor-body',
   'claim-task-response.json': 'claim-task-response',
+  'hook-envelope.json': 'hook-envelope',
+  'hook-receipt-body.json': 'hook-receipt-body',
 };
 
 const REQUIRED_OPENAPI_PATHS = [
@@ -119,6 +150,10 @@ const REQUIRED_OPENAPI_PATHS = [
   '/demands/{id}/cancel',
   '/events',
   '/admin/tasks',
+  // --- S4: generic Hook surface (root paths, docs/003 §4.7) ---
+  '/hooks',
+  '/hooks/{id}/replay',
+  '/hooks/{target}/receipt',
 ];
 
 const failures = [];

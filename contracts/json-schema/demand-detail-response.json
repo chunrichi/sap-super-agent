@@ -822,7 +822,12 @@
               "approval.expired",
               "approval.withdrawn",
               "executor.registered",
-              "executor.offline"
+              "executor.offline",
+              "hook.attempted",
+              "hook.delivered",
+              "hook.dead",
+              "hook.receipt",
+              "hook.cancelled"
             ]
           },
           "at": {
@@ -843,7 +848,8 @@
                   "artifact",
                   "approval",
                   "executor",
-                  "system"
+                  "system",
+                  "hook"
                 ]
               },
               "id": {

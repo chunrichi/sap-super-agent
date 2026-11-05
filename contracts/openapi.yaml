@@ -22,6 +22,7 @@ tags:
   - name: notifications
   - name: events
   - name: admin
+  - name: hooks
 paths:
   /healthz:
     get:
@@ -508,6 +509,78 @@ paths:
             application/json:
               schema:
                 $ref: ./json-schema/approval-decision-response.json
+        '404': { $ref: '#/components/responses/NotFound' }
+  # --- S4: generic Hook surface (docs/003 §4.7, docs/008). These three paths
+  # live at the server root (not under /api/v1) like the SAP webhook, because
+  # external systems call them directly; each path item overrides `servers`.
+  /hooks:
+    servers:
+      - url: http://127.0.0.1:3080
+    get:
+      tags: [hooks]
+      summary: Admin view of configured hooks, outbox depth, last error and last attempt
+      responses:
+        '200':
+          description: Per-hook status
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/hook-status.json
+        '403': { $ref: '#/components/responses/Unauthorized' }
+  /hooks/{id}/replay:
+    servers:
+      - url: http://127.0.0.1:3080
+    post:
+      tags: [hooks]
+      summary: Replay a dead/sent/cancelled hook delivery by eventId (idempotent via Idempotency-Key)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./json-schema/hook-replay-body.json
+      responses:
+        '200':
+          description: Replay accepted (or already pending)
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/hook-replay-response.json
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /hooks/{target}/receipt:
+    servers:
+      - url: http://127.0.0.1:3080
+    post:
+      tags: [hooks]
+      summary: Inbound external receipt (HMAC X-SA-* headers, idempotent)
+      security: []
+      parameters:
+        - name: target
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./json-schema/hook-receipt-body.json
+      responses:
+        '200':
+          description: Receipt recorded (`duplicate: true` for a replay)
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/hook-receipt-response.json
+        '401':
+          description: Missing/invalid X-SA-* signature or stale timestamp
         '404': { $ref: '#/components/responses/NotFound' }
 components:
   securitySchemes:

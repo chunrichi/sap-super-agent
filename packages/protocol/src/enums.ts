@@ -152,6 +152,8 @@ export const EVENT_SUBJECT_TYPES = [
   'approval',
   'executor',
   'system',
+  // --- S4: generic Hook attempts/receipts/cancellations (docs/003 §4.7) ---
+  'hook',
 ] as const;
 export const eventSubjectTypeSchema = z.enum(EVENT_SUBJECT_TYPES);
 export type EventSubjectType = z.infer<typeof eventSubjectTypeSchema>;
@@ -194,6 +196,12 @@ export const EVENT_TYPES = [
   'approval.withdrawn',
   'executor.registered',
   'executor.offline',
+  // --- S4: generic Hook delivery + inbound receipt events (docs/003 §4.7) ---
+  'hook.attempted',
+  'hook.delivered',
+  'hook.dead',
+  'hook.receipt',
+  'hook.cancelled',
 ] as const;
 export const eventTypeSchema = z.enum(EVENT_TYPES);
 export type EventType = z.infer<typeof eventTypeSchema>;

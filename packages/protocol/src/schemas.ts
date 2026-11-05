@@ -44,6 +44,17 @@ import {
   withdrawApprovalResponseSchema,
 } from './requests.js';
 import { stageTemplateFileSchema, stageTemplateSchema } from './templates.js';
+// --- S4: generic Hook schemas (docs/008) ---
+import {
+  hookDefinitionSchema,
+  hookEnvelopeSchema,
+  hookReceiptBodySchema,
+  hookReceiptResponseSchema,
+  hookReplayBodySchema,
+  hookReplayResponseSchema,
+  hooksConfigFileSchema,
+  listHooksResponseSchema,
+} from './hooks.js';
 
 /**
  * Registry consumed by `scripts/contract-gen.mjs` to snapshot JSON Schema into
@@ -91,6 +102,15 @@ export const contractSchemas = {
   'mark-notification-read-response': markNotificationReadResponseSchema,
   'create-demand-artifact-response': createDemandArtifactResponseSchema,
   'health-response': healthResponseSchema,
+  // --- S4: generic Hook contract (docs/008 §2/§4/§6) ---
+  'hook-envelope': hookEnvelopeSchema,
+  'hook-definition': hookDefinitionSchema,
+  'hooks-config': hooksConfigFileSchema,
+  'hook-receipt-body': hookReceiptBodySchema,
+  'hook-receipt-response': hookReceiptResponseSchema,
+  'hook-status': listHooksResponseSchema,
+  'hook-replay-body': hookReplayBodySchema,
+  'hook-replay-response': hookReplayResponseSchema,
 } satisfies Record<string, z.ZodType>;
 
 export type ContractSchemaName = keyof typeof contractSchemas;

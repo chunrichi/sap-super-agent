@@ -75,6 +75,8 @@
 
 ### S5 SAP 宿主受限模式
 
+> **状态（2026-11-05）：S5 Phase A 进行中**（分支 `feat/s5-sap-hosted`）。交付口径见 [handoffs/S5-sap-hosted-mode.md](../handoffs/S5-sap-hosted-mode.md) / [S5-execution-handoff.md](../handoffs/S5-execution-handoff.md)、协议 [003 §4.8](003-domain-and-protocol.md#48-sap-批处理-ai-执行器m3s5)；M3 部署见 [010-m3-deployment.md](010-m3-deployment.md)。Phase B 真机依赖人工输入（控制平面可达 + HMAC/服务账号 + SM36/bgRFC + 企业 AI 网关），输入缺失按 blocked 记录。
+
 - **目标**：满足"数据与流程尽量不出 SAP"的诉求。
 - **交付**：SAP 侧 bgRFC 批处理 job 调 AI（需求分析/测试文档等结构化阶段）、SAP 内审批直接驱动阶段推进、控制平面轻服务与 SAP 同网段部署（或内嵌于 ABAP 的 HTTP 调用）、M3 部署文档。
 - **验收**：无任何开发者在线时，需求分析与测试文档仍能生成；审批在 SAP 内完成；敏感内容不离开企业边界。

@@ -143,6 +143,8 @@ StageRun 就绪
 - 默认 **BYOK**：模型 Key 只存服务端环境变量/secret manager，绝不下发客户端、不写入 prompt、不进日志；`packages/ai` 只依赖统一 `ModelProvider` 接口。
 - 不强制依赖 DSH 或其他 agent 框架；框架只是可选的执行器实现。
 
+**M3（S5）网关路径**：启用 `SA_SAP_AI_BATCH=1` 后，被委派的 `server-ai` 阶段不再由控制平面调用模型，而是由控制平面渲染 prompt（`renderAiStageMessages`，system/user 与本地执行同一份）写入 SAP job；SAP 批处理程序调用企业 AI 网关并把**模型原始输出**回传，控制平面继续做 JSON 提取/schema/checklist/ledger/门禁（协议见 [003 §4.8](003-domain-and-protocol.md#48-sap-批处理-ai-执行器m3s5)，部署见 [010](010-m3-deployment.md)）。控制平面不持有网关 key；`SA_AI_MODEL` 决定 payload 里的模型，SAP 可用 `ZSA_CFG.AI_GATEWAY_MODEL` 兜底。
+
 ### 3.4 为什么不全放到 Copilot Chat
 
 - 无人时（夜间/离线）流程不能停：服务端 AI 24×7 推进结构化阶段。

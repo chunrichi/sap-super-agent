@@ -34,6 +34,8 @@
 | 14 | 审批超时 / 撤销 | 集成 | Approval 转 `expired`/`withdrawn`；StageRun 不卡死 |
 | 15 | 服务端 AI 超时 / 输出不合 schema | 集成 | 重试到上限转人工；不产生半成品工件；成本记账 |
 | 16 | 需求未绑定仓库 / 用户账号映射变化 | 集成 + 客户端 | 未绑定任务进入通用任务箱；绑定任务只对匹配工作区可见；映射变化后可见性正确刷新 |
+| 17 | SAP 批处理 job 重复 claim / 重复 result（S5/M3） | 集成 + e2e | 第二个 claim 返回 409；重复 result 幂等（只完成一次、只写一条 `stage.ai_job.completed`、只有一条 attempt ledger、不重复工件） |
+| 18 | SAP 批处理 job 租约过期 / 超龄 / 网关失败（S5/M3） | 集成 + e2e | 租约过期回 `queued`（不增 attempt）；多次过期/超龄按阶段失败（重试到 `maxAttempts` → `waiting_human`）；网关失败/非法输出不产生半成品工件；启用时本地 provider 调用次数为 0 |
 
 ## 3. AI 输出质量评测
 

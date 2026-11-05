@@ -790,6 +790,8 @@ requeue 语义（与 [003 §4.8.4](003-domain-and-protocol.md#48-sap-批处理-a
 任一缺失：记录 blocked 与所需输入，Phase A 仍可交付；不要伪造真机结果。
 
 > 2026-11-05：第 **5** 项已满足（测试系统可达、`abap doctor`/`profile test` 通过），B1/B2 已完成；第 **1–4** 项仍缺失，B3–B10 blocked。
+>
+> 2026-11-05 晚复核（仍 blocked，未伪造）：`abap test ZCL_ZSA_AI_BATCH` 复跑 **15/15**；`abap select --table ZSA_CFG` **0 行**（B3 未写）；`abap select --table TBTCO --count-only --where "JOBNAME LIKE 'ZSA%'"` **0**（B5 未调度）；仓库无 `.env`（仅 `.env.example`）与控制平面/网关配置（第 1–4 项输入仍未提供）。拿到输入后按 §9.2 B3–B10 继续。
 
 ## 10. 已知限制
 

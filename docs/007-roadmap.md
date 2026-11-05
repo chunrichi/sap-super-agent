@@ -100,6 +100,8 @@
 
 每个版本发布前检查：README 与 docs 的快速开始能跑通、有无破坏性变更说明、示例配置更新、CHANGELOG 生成、许可证/安全声明更新。
 
+> **状态（2026-11-05）**：`v1.0.0` 发布物料已准备——[CHANGELOG](../CHANGELOG.md)、[SECURITY](../SECURITY.md) 支持版本与报告渠道、版本号统一 `1.0.0`、VSIX 打包（`pnpm package:vsix`）与真实 VSCode Extension Host 冒烟（`pnpm vscode:smoke`）、离线文档链接检查（`pnpm link:check`）；**tag 尚未创建**，发布步骤见 [006 §3.4](006-repo-and-git.md)。v0.x 里程碑已随 `main` 交付但未单独打 tag。`v1.0.0` 实际范围 = M1 本地模式 + SAP ICF/MIME + 门禁/模板 + 多执行器 + Hook 示例 + VSCode 扩展 + M3 Phase A（默认关闭）；M3 Phase B 真机端到端仍依赖人工输入（[010 §9.3](010-m3-deployment.md#93-phase-b-人工输入清单blocked-判据)），独立安全审计与单独迁移指南不在本版交付（迁移只追加约定见 [010 §5.8](010-m3-deployment.md#58-升级与回滚)）。
+
 ## 3. 给一个人 + AI Agent 的推进建议
 
 - 每个切片按"协议 → 核心 → 宿主 → 客户端 → e2e"顺序做，Prototype 先行（可在本地用假 SAP / 假 LLM 跑）。

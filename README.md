@@ -2,7 +2,7 @@
 
 > 面向 SAP 研发交付的 super-agent：需求记录在 SAP，编排在控制平面，编码在开发者身边的 VSCode，重复的文档工作由服务端 AI 主动完成。
 
-**状态：S0–S4 与 H2（SAP 需求系统）已完成并合入 `main`（S4 = Hook 契约 + `http` 示例目标，PR #10）；S5/M3（SAP 批处理 AI 阶段）Phase A 已合入 `main`（PR #13）；Phase B 部分完成（测试系统上 `ZCL_ZSA_AI_BATCH`/`ZSA_AI_BATCH_RUN` 已激活、ABAP Unit 15/15），其余仍 blocked（缺控制平面可达/HMAC/服务账号/SM36/企业 AI 网关输入，见 [docs/010 §9.3](docs/010-m3-deployment.md#93-phase-b-人工输入清单blocked-判据)）。** 代码按 [路线图](docs/007-roadmap.md) 推进；`pnpm check` / `pnpm e2e` / `pnpm build` / `pnpm sap:check` / `pnpm contract:check` 为当前验收命令。
+**状态：S0–S4、H2（SAP 需求系统）与 S5/M3 Phase A 已合入 `main`；S5 Phase B 的 SAP 侧可独立部分已完成（测试系统上 `ZCL_ZSA_AI_BATCH`/`ZSA_AI_BATCH_RUN` 已激活、ABAP Unit 15/15），端到端仍 blocked（缺控制平面可达/HMAC/服务账号、SM36、企业 AI 网关输入，见 [docs/010 §9.3](docs/010-m3-deployment.md#93-phase-b-人工输入清单blocked-判据)）。v1.0.0 发布物料已就绪（CHANGELOG、SECURITY/支持版本、版本号 1.0.0、VSIX 打包 `pnpm package:vsix`、真实 VSCode Extension Host 冒烟 `pnpm vscode:smoke`、离线文档链接检查 `pnpm link:check`），tag 待发布确认。** 代码按 [路线图](docs/007-roadmap.md) 推进；`pnpm check` / `pnpm e2e` / `pnpm build` / `pnpm sap:check` / `pnpm contract:check` / `pnpm link:check` 为当前验收命令。
 
 **设计演示**：[demo/index.html](demo/index.html) — 10 幕 HTML 动画，浏览器打开即可（自动播放，支持 ← → / 空格 / 重播）。
 
@@ -76,9 +76,11 @@ corepack enable
 pnpm install
 cp .env.example .env     # 可选；不配也能跑，默认 fake AI provider
 pnpm dev                 # 启动 M1 控制平面（默认 http://127.0.0.1:3080）
+# 3080 被占用时换端口（下文 URL 里的 3080 相应替换）：
+#   SA_HTTP_PORT=3199 pnpm dev      # 或 pnpm cli dev --port 3199
 ```
 
-`pnpm dev` 打印 control plane URL 与本地 dev token（user/admin）。控制平面启动时读取工作目录 `.env`（`SA_AI_*` / `SA_STATE_DIR` / `SA_HTTP_PORT`，真实环境变量优先）；同一状态目录只允许一个实例，重复启动会直接提示已占用。另开终端建需求：
+`pnpm dev` 打印 control plane URL 与本地 dev token（user/admin）。控制平面启动时读取工作目录 `.env`（`SA_AI_*` / `SA_STATE_DIR` / `SA_HTTP_PORT`，真实环境变量优先）；同一状态目录只允许一个实例，重复启动会直接提示已占用。另开终端，把 user token 导出为 `TOKEN` 后建需求：
 
 ```sh
 TOKEN=<user token>
@@ -90,7 +92,8 @@ curl -s -X POST http://127.0.0.1:3080/api/v1/demands \
 fake provider 下数秒内 `GET /api/v1/demands/{id}` 会包含 `requirement_analysis` 工件并停在 G1 门禁（默认 3 阶段模板）。门禁是一等公民：
 
 ```sh
-# 我的待审批（默认模板：G1 需求顾问、G3 开发评审、G4 业务验收）
+# 待审批列表（M1 本地模式不区分个人：任意 user/admin token 都可决策；
+# 默认模板门禁角色：G1/G3 = consultant、G4 = requester）
 curl -s "http://127.0.0.1:3080/api/v1/approvals?assignee=me" -H "authorization: Bearer $TOKEN"
 # 通过 / 驳回：{ "decision": "approve" | "reject", "comment": "..." }
 curl -s -X POST "http://127.0.0.1:3080/api/v1/approvals/<approvalId>/decisions" \
@@ -99,11 +102,11 @@ curl -s -X POST "http://127.0.0.1:3080/api/v1/approvals/<approvalId>/decisions" 
 curl -s http://127.0.0.1:3080/api/v1/templates -H "authorization: Bearer $TOKEN"
 ```
 
-G1 通过后服务端按模板自动生成 vscode 开发任务（`GET /api/v1/tasks` 可领取），`POST /api/v1/admin/tasks` 仅保留给 S0 兼容与运维手建。`POST /api/v1/demands/{id}/artifacts` 用于人工确认/调整工件（产生新版本，不覆盖历史）。
+G1 通过后服务端按模板自动生成 vscode 开发任务（`tasks`/WS 接口要 executor token：扩展连接时用 user token 走 `POST /api/v1/executors/register` 换发，`GET /api/v1/tasks` 即可领取），`POST /api/v1/admin/tasks` 仅保留给 S0 兼容与运维手建。`POST /api/v1/demands/{id}/artifacts` 用于人工确认/调整工件（产生新版本，不覆盖历史）。
 
-VSCode 扩展（任务客户端 + 本地能力宿主，不接管 Copilot 会话）：
+VSCode 扩展（任务客户端 + 本地能力宿主，不接管 Copilot 会话；安装/使用细节见 [扩展 README](packages/clients/vscode/README.md)）：
 
-1. VSCode 打开本仓库，`pnpm --filter sap-superagent-vscode run build` 后按 F5（或安装 VSIX）；
+1. VSCode 打开本仓库，`pnpm --filter sap-superagent-vscode run build` 后按 F5（launch 配置 `Run Extension`）；或 `pnpm package:vsix` 打包后用 `code --install-extension tmp/vsix/sap-superagent-vscode-<version>.vsix` 安装；
 2. 命令面板 → `SAP Super Agent: 连接控制平面`，粘贴 `pnpm dev` 打印的 user token（存 `SecretStorage`）；
 3. `绑定当前工作区` → 任务箱「可领取」领取任务 → `打开任务` 生成 `.sap-superagent/task/<taskId>/context.md`，供 Copilot Chat 用 `#file` 引用。
 4. 任务箱三组实时刷新（WS 推送，不等轮询）；「等待我回答」列出待审批与未读通知，点行即可通过/驳回或标记已读；切换工作目录会立即释放已持有任务回池。
@@ -125,6 +128,7 @@ WS 事件流：`ws://127.0.0.1:3080/api/v1/events?token=<token>&after=<lastSeq>`
 pnpm cli init --repo z-sales --project-key SALES   # 写 .sap-superagent/workspace.json
 pnpm cli token --kind user                         # 单独签发 token
 pnpm cli doctor                                    # 环境自检：Node/pnpm/端口/状态目录/模板/AI
+pnpm link:check                                    # 文档相对链接 + GitHub 标题锚点（离线）
 ```
 
 端口被占用时用 `pnpm cli dev --port <port>`（例如 3080 已被别的应用占用）。
@@ -199,7 +203,7 @@ pnpm hooks:reconcile # Hook 对账（只读差异报告；默认退出 0，--fai
 
 - 开发、分支、提交与 PR 约定见 [006 仓库结构与 Git 策略](docs/006-repo-and-git.md)；AI Agent 协作约定见 [AGENTS.md](AGENTS.md)。
 - SAP 侧开发统一使用 [abap-cli](.agents/skills/abap-cli/SKILL.md)。
-- 安全问题不要公开提交含真实系统 / 凭据 / 需求内容的信息；先通过仓库 Issue 模板联系维护者（SECURITY.md 随仓库初始化补充）。
+- 安全问题不要公开发 Issue / PR：按 [SECURITY.md](SECURITY.md) 的私有渠道（GitHub Security Advisory 私密报告）提交；公开内容不要含真实系统地址、凭据或需求数据。
 
 ## License
 

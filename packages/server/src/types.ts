@@ -28,6 +28,8 @@ export interface ServerOptions {
   wsPingMs?: number;
   // --- H1: gate timeout override in ms (tests / M1 ops; default per template) ---
   gateTimeoutMs?: number;
+  // --- S3: per-user concurrency cap for human (vscode) tasks (docs/003 §3 rule 6) ---
+  maxConcurrentPerUser?: number;
 }
 
 export interface RunningServer {
@@ -56,6 +58,8 @@ export interface ServerConfig {
   wsPingMs: number;
   // --- H1: null = use the template's timeoutDays ---
   gateTimeoutMs: number | null;
+  // --- S3: default 2; only constrains human (vscode) tasks ---
+  maxConcurrentPerUser: number;
 }
 
 /** Shared, immutable-per-server services passed to routes and workers. */

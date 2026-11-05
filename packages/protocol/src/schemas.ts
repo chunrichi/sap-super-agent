@@ -13,6 +13,7 @@ import {
   stageRunSchema,
   taskSchema,
   taskSummarySchema,
+  taskTransferSchema,
   workspaceBindingSchema,
 } from './entities.js';
 import { apiErrorBodySchema } from './errors.js';
@@ -38,6 +39,8 @@ import {
   registerExecutorResponseSchema,
   taskContextSchema,
   taskDetailResponseSchema,
+  transferTaskBodySchema,
+  transferTaskResponseSchema,
   withdrawApprovalResponseSchema,
 } from './requests.js';
 import { stageTemplateFileSchema, stageTemplateSchema } from './templates.js';
@@ -56,6 +59,7 @@ export const contractSchemas = {
   task: taskSchema,
   'task-summary': taskSummarySchema,
   assignment: assignmentSchema,
+  'task-transfer': taskTransferSchema,
   artifact: artifactSchema,
   'artifact-version': artifactVersionSchema,
   'artifact-chain': artifactChainSchema,
@@ -77,6 +81,8 @@ export const contractSchemas = {
   'task-detail-response': taskDetailResponseSchema,
   'task-context': taskContextSchema,
   'claim-task-response': claimTaskResponseSchema,
+  'transfer-task-body': transferTaskBodySchema,
+  'transfer-task-response': transferTaskResponseSchema,
   'list-approvals-response': listApprovalsResponseSchema,
   'approval-decision-body': approvalDecisionBodySchema,
   'approval-decision-response': approvalDecisionResponseSchema,

@@ -1,10 +1,15 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { newDemandId, newUlid } from '@sap-superagent/protocol';
 import {
+  APPROVAL_ACTION_COMMAND,
   INBOX_GROUP_LABELS,
+  READ_NOTIFICATION_COMMAND,
   TaskInboxProvider,
   buildInboxNodes,
   describeTask,
   emptyInboxData,
+  groupTooltip,
+  shortDemandId,
 } from '../src/tasksView.js';
 import { resetVscodeMock } from './mocks/vscode.js';
 import { makeTask } from './fixtures.js';
@@ -86,5 +91,111 @@ describe('TaskInboxProvider', () => {
     provider.refresh(emptyInboxData());
     expect(fired).toBe(1);
     provider.dispose();
+  });
+});
+
+function makeApproval(overrides: Record<string, unknown> = {}) {
+  return {
+    id: newUlid(),
+    demandId: newDemandId(),
+    stageRunId: newUlid(),
+    gateKey: 'G1',
+    artifactId: newUlid(),
+    artifactVersion: 1,
+    state: 'pending' as const,
+    requiredRole: 'consultant' as const,
+    decision: null,
+    decidedBy: null,
+    decidedAt: null,
+    comment: null,
+    expiresAt: null,
+    createdAt: '2026-11-05T00:00:00.000Z',
+    updatedAt: '2026-11-05T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function makeNotification(overrides: Record<string, unknown> = {}) {
+  return {
+    id: newUlid(),
+    demandId: newDemandId(),
+    stageRunId: null,
+    approvalId: null,
+    kind: 'stage.waiting_human' as const,
+    requiredRole: 'developer' as const,
+    title: '阶段等待人工确认',
+    body: '需要你确认输出',
+    createdAt: '2026-11-05T00:00:00.000Z',
+    readAt: null,
+    ...overrides,
+  };
+}
+
+describe('waiting group (S3: approvals + notifications)', () => {
+  it('counts gates and unread notifications in the group', () => {
+    const nodes = buildInboxNodes({
+      ...emptyInboxData(),
+      waiting: [
+        { kind: 'approval', approval: makeApproval() },
+        { kind: 'notification', notification: makeNotification() },
+      ],
+    });
+    expect(nodes[2]).toMatchObject({ kind: 'group', group: 'waiting', count: 2 });
+  });
+
+  it('shows gates before notifications, oldest gate first', () => {
+    const older = makeApproval({ gateKey: 'G1', createdAt: '2026-11-01T00:00:00.000Z' });
+    const newer = makeApproval({ gateKey: 'G3', createdAt: '2026-11-03T00:00:00.000Z' });
+    const note = makeNotification({ title: '通知 A', createdAt: '2026-11-04T00:00:00.000Z' });
+    const data = {
+      ...emptyInboxData(),
+      waiting: [
+        { kind: 'notification' as const, notification: note },
+        { kind: 'approval' as const, approval: newer },
+        { kind: 'approval' as const, approval: older },
+      ],
+    };
+    const group = buildInboxNodes(data)[2]!;
+    const children = buildInboxNodes(data, group);
+    expect(children.map((node) => (node.kind === 'waiting' ? node.label : 'group'))).toEqual([
+      '审批 G1 · consultant',
+      '审批 G3 · consultant',
+      '通知 A',
+    ]);
+  });
+
+  it('creates clickable tree items for gates and notifications', () => {
+    const provider = new TaskInboxProvider();
+    const approval = makeApproval({ gateKey: 'G1' });
+    const notification = makeNotification({ title: '待确认' });
+    provider.refresh({
+      ...emptyInboxData(),
+      waiting: [
+        { kind: 'approval', approval },
+        { kind: 'notification', notification },
+      ],
+    });
+    const group = provider.getChildren()[2]!;
+    const [approvalNode, notificationNode] = provider.getChildren(group);
+    const approvalItem = provider.getTreeItem(approvalNode!);
+    expect(approvalItem.contextValue).toBe('sapSuperAgent.waiting.approval');
+    expect((approvalItem.command as { command: string }).command).toBe(APPROVAL_ACTION_COMMAND);
+    expect((approvalItem.command as { arguments: unknown[] }).arguments).toEqual([approval]);
+    expect(String(approvalItem.tooltip)).toContain('通过');
+
+    const notificationItem = provider.getTreeItem(notificationNode!);
+    expect(notificationItem.label).toBe('待确认');
+    expect(notificationItem.contextValue).toBe('sapSuperAgent.waiting.notification');
+    expect((notificationItem.command as { command: string }).command).toBe(
+      READ_NOTIFICATION_COMMAND,
+    );
+  });
+
+  it('gives the next action for empty groups and short demand ids', () => {
+    expect(groupTooltip('waiting', 0)).toContain('没有等待你回答');
+    expect(groupTooltip('available', 0)).toContain('可领取');
+    expect(groupTooltip('mine', 2)).toContain('2');
+    expect(shortDemandId('4a3f9c2e7b1d48f0a6c5e2d9b8f7a1c3')).toBe('…f7a1c3');
+    expect(shortDemandId('short')).toBe('short');
   });
 });

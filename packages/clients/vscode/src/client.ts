@@ -5,12 +5,17 @@
 import { z } from '@sap-superagent/protocol';
 import {
   apiErrorBodySchema,
+  approvalDecisionResponseSchema,
   claimTaskResponseSchema,
   completeTaskResponseSchema,
+  eventsResponseSchema,
   failTaskResponseSchema,
   heartbeatResponseSchema,
   leaseRenewResponseSchema,
+  listApprovalsResponseSchema,
+  listNotificationsResponseSchema,
   listTasksResponseSchema,
+  markNotificationReadResponseSchema,
   registerExecutorResponseSchema,
   releaseTaskResponseSchema,
   submitArtifactResponseSchema,
@@ -19,11 +24,16 @@ import {
   unregisterExecutorResponseSchema,
 } from '@sap-superagent/protocol';
 import type {
+  ApprovalDecisionBody,
   CompleteTaskBody,
   ErrorCode,
   FailTaskBody,
+  EventsResponse,
   HeartbeatBody,
+  ListApprovalsResponse,
+  ListNotificationsResponse,
   ListTasksResponse,
+  MarkNotificationReadResponse,
   ProgressBody,
   RegisterExecutorBody,
   RegisterExecutorResponse,
@@ -309,6 +319,83 @@ export class ControlPlaneClient {
       body: {},
       schema: releaseTaskResponseSchema,
     });
+  }
+
+  // --- S3: approvals / notifications / event cursors (docs/003 §4.3/§4.4) ---
+
+  /** `GET /approvals?assignee=me&state=pending` — the "等待我回答" group. */
+  async listApprovals(
+    query: { assignee?: string; state?: string } = {},
+  ): Promise<ListApprovalsResponse> {
+    return this.request({
+      method: 'GET',
+      path: '/approvals',
+      query: {
+        ...(query.assignee === undefined ? {} : { assignee: query.assignee }),
+        ...(query.state === undefined ? {} : { state: query.state }),
+      },
+      schema: listApprovalsResponseSchema,
+    });
+  }
+
+  /** `POST /approvals/{id}/decisions` (approve/reject + optional comment). */
+  async decideApproval(
+    approvalId: string,
+    body: ApprovalDecisionBody,
+  ): Promise<z.infer<typeof approvalDecisionResponseSchema>> {
+    return this.request({
+      method: 'POST',
+      path: `/approvals/${encodeURIComponent(approvalId)}/decisions`,
+      body,
+      schema: approvalDecisionResponseSchema,
+    });
+  }
+
+  /** `GET /notifications?state=unread` — unread "must act" alerts. */
+  async listNotifications(
+    query: { state?: string; limit?: number } = {},
+  ): Promise<ListNotificationsResponse> {
+    return this.request({
+      method: 'GET',
+      path: '/notifications',
+      query: {
+        ...(query.state === undefined ? {} : { state: query.state }),
+        ...(query.limit === undefined ? {} : { limit: query.limit }),
+      },
+      schema: listNotificationsResponseSchema,
+    });
+  }
+
+  /** `POST /notifications/{id}/read`; idempotent for already-read rows. */
+  async markNotificationRead(notificationId: string): Promise<MarkNotificationReadResponse> {
+    return this.request({
+      method: 'POST',
+      path: `/notifications/${encodeURIComponent(notificationId)}/read`,
+      body: {},
+      schema: markNotificationReadResponseSchema,
+    });
+  }
+
+  /** `GET /events?after=` — REST replay used after a `resync_required` frame. */
+  async listEvents(after: number, limit?: number): Promise<EventsResponse> {
+    return this.request({
+      method: 'GET',
+      path: '/events',
+      query: { after, ...(limit === undefined ? {} : { limit }) },
+      schema: eventsResponseSchema,
+    });
+  }
+
+  /**
+   * WS URL for `EventStreamClient` (`after` is appended per connect). After a
+   * successful register this carries the executor token, so the server binds
+   * the connection to this executor and can filter `task.offered` (S3).
+   */
+  eventStreamUrl(): string {
+    const url = new URL(this.buildUrl('/events'));
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    url.searchParams.set('token', this.token);
+    return url.toString();
   }
 
   /** Convenience helper for UI code that only needs the row body. */

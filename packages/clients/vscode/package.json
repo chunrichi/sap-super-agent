@@ -66,6 +66,7 @@
     "check": "pnpm run typecheck && pnpm run test"
   },
   "dependencies": {
-    "@sap-superagent/protocol": "workspace:*"
+    "@sap-superagent/protocol": "workspace:*",
+    "ws": "^8.22.1"
   }
 }

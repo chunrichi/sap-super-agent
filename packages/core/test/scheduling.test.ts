@@ -46,6 +46,8 @@ function eligibility(overrides: Partial<ClaimEligibilityInput> = {}): ClaimEligi
     lastHeartbeatAt: NOW,
     activeAssignmentsForExecutor: 0,
     activeAssignmentsForSameDemand: 0,
+    activeAssignmentsForUser: 0,
+    maxConcurrentPerUser: 2,
     globallyPaused: false,
     ...overrides,
   };
@@ -106,6 +108,30 @@ describe('claim eligibility (docs/003 §3)', () => {
     expect(
       evaluateClaimEligibility(eligibility({ activeAssignmentsForSameDemand: 1 })).reasons,
     ).toContain('same_demand_already_held');
+  });
+
+  it('caps human tasks per user but never throttles server-ai executors (rule 6, S3)', () => {
+    expect(
+      evaluateClaimEligibility(eligibility({ activeAssignmentsForUser: 2 })).reasons,
+    ).toContain('user_at_capacity');
+    expect(
+      evaluateClaimEligibility(eligibility({ activeAssignmentsForUser: 1 })).eligible,
+    ).toBe(true);
+    // A configurable cap is honoured (tests inject tighter values).
+    expect(
+      evaluateClaimEligibility(eligibility({ activeAssignmentsForUser: 1, maxConcurrentPerUser: 1 }))
+        .eligible,
+    ).toBe(false);
+    // server-ai system accounts are not limited by the per-user cap.
+    const serverAi = evaluateClaimEligibility(
+      eligibility({
+        task: serverAiTask,
+        executor: serverAiExecutor,
+        activeAssignmentsForUser: 9,
+        maxConcurrentPerUser: 2,
+      }),
+    );
+    expect(serverAi.eligible).toBe(true);
   });
 
   it('ignores presence/workspace for server-ai tasks', () => {

@@ -119,6 +119,17 @@ export function countActiveAssignmentsForUserOnDemand(
   return Number(row.count);
 }
 
+/**
+ * Active assignments held by one user across all of their executors
+ * (docs/003 §3 rule 6, S3 per-user concurrency cap).
+ */
+export function countActiveAssignmentsForUser(db: DatabaseSync, userId: string): number {
+  const row = db
+    .prepare("SELECT COUNT(*) AS count FROM assignments WHERE state = 'active' AND user_id = ?")
+    .get(userId) as unknown as { count: number };
+  return Number(row.count);
+}
+
 export function listExpiredActiveAssignments(
   db: DatabaseSync,
   cutoffIso: string,

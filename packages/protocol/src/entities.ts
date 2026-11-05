@@ -205,6 +205,28 @@ export const assignmentSchema = z
   .strict();
 export type Assignment = z.infer<typeof assignmentSchema>;
 
+/**
+ * Audit record for a task transfer (docs/003 §2.3/§4.2, S3). The previous
+ * assignment ended (`released`) and the task went back to the pool: the
+ * optional target is a hint (audit + targeted visibility), never a lock.
+ * `targetRole` narrows the pool by rewriting `requiredRoles` to `[targetRole]`.
+ */
+export const taskTransferSchema = z
+  .object({
+    id: ulidSchema,
+    taskId: ulidSchema,
+    /** The assignment this transfer ended. */
+    assignmentId: ulidSchema,
+    fromExecutorId: ulidSchema,
+    fromUserId: z.string().min(1).nullable(),
+    targetUserId: z.string().min(1).nullable(),
+    targetRole: roleSchema.nullable(),
+    comment: z.string().nullable(),
+    createdAt: isoDateTimeSchema,
+  })
+  .strict();
+export type TaskTransfer = z.infer<typeof taskTransferSchema>;
+
 // ---------------------------------------------------------------------------
 // Artifact (docs/003 §2.4)
 // ---------------------------------------------------------------------------

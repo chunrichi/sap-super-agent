@@ -97,7 +97,12 @@ Assignment 状态：`active → completed | released | expired`。
 - 租约：默认 60s，客户端每 20s 续约；过期自动 `expired`，任务回 `pending`，已提交工件保留。
 - `complete`/`fail` 必须携带当前租约；租约失效后的写入被拒绝，防止两个客户端同时写。
 - 任务并发：每执行器 `maxConcurrent`（默认 2），每用户同一需求最多 1 个活跃人工任务（避免自己挤自己）。
+- 用户并发上限：每用户 `maxConcurrentPerUser`（默认 2，`ServerOptions.maxConcurrentPerUser` 可配）只约束人工（`vscode`）任务；与"同需求 1 个活跃人工任务"并存。`server-ai` 执行器（系统账号）不受该上限约束，仍按每执行器 `maxConcurrent`。
 - 回池不重复派给刚释放的人：按 `lastHolderUserIds` 对最近 3 位降权（排序加权重），不硬排除。
+- 任务转交：持有租约的执行器可 `POST /tasks/{id}/transfer` 把任务交还池子。必须区分"转交"与"定向指派"：
+  - 转交 = 结束当前 assignment（`released` + `assignment.released` 事件）+ 任务回 `pending`（`task.transferred` 事件 + `lastHolderUserIds` 降权）。**任务仍按 §3 规则在池中可领取，不锁定给任何人**；`targetUserId` 只是事件审计与即时可见性提示（目标用户"可领取"而非"独占"），不改变"任务不预绑定到人"的不变式。
+  - `targetRole` 是**显式收窄角色池**的语义：把 `task.requiredRoles` 设为 `[targetRole]`（事件 `task.transferred` 记录 `previousRequiredRoles` 与 `requiredRoles`）。原 `requiredRoles` 非空时，目标角色必须已在其中（否则 `409 conflict`）；原 `requiredRoles` 为空（原本不限角色）时允许收窄——这是 transfer 的显式语义，任务可见性随之变化，客户端/审计以事件中记录的原值为准。
+  - 转交后原租约立即失效；非持有者、终态任务、目标用户不满足角色/并发约束均返回 `409`。
 
 ### 2.4 工件 Artifact
 
@@ -162,7 +167,7 @@ Assignment 状态：`active → completed | released | expired`。
 3. 角色匹配：`task.requiredRoles ⊆ executor.roles`（空表示不限）。
 4. 工作区匹配：`task.workspaceBinding` 为空表示通用任务（按角色/团队即可领取）；非空时要求 `repo/projectKey` 与执行器声明有交集，且 `activeWorkspaceKey` 属于其声明的 workspaces（即**当前打开目录**；目录一换即视为离线）。绑定可由需求顾问在受理时补充，或由用户账号维护的工作区列表决定。
 5. 在线约束：vscode 任务要求 presence ∈ {online, busy} 且 `accepting=true`、`load < maxConcurrent`；server-ai 任务不看 presence。
-6. 用户并发：同一用户未超过 `maxConcurrentPerUser`。
+6. 用户并发：同一用户未超过 `maxConcurrentPerUser`（默认 2；服务端 `ServerOptions.maxConcurrentPerUser` 可配）。只约束人工（`vscode`）任务；`server-ai` 按每执行器 `maxConcurrent` 计。
 
 **离线判定**（任一条件成立即视为不可派单）：WS 断开且心跳超过 TTL；`activeWorkspaceKey` 不属于声明的 workspaces；`accepting=false`；服务端全局 `paused`。客户端不依赖操作系统的"网络在线"事件，也不用本地时钟判断租约过期（以 `serverTime` 为准）。
 
@@ -170,9 +175,9 @@ Assignment 状态：`active → completed | released | expired`。
 
 派发事件：
 
-- 执行器注册 / 心跳 → 服务端重算可领取列表，在心跳响应里返回 `offers`；任务新建或回池时再向已连接客户端推送 `task.offered` 提示帧（H0 广播给所有连接，按执行器过滤在 S3 增强）。
-- 任务新增 → 推送给所有满足 1–5 的在线执行器（只含摘要，不含工件内容）。
-- 租约过期 → 写 `assignment.expired` 事件，任务回池并推送给其他候选。
+- 执行器注册 / 心跳 → 服务端重算可领取列表，在心跳响应里返回 `offers`；任务新建或回池时再向已连接客户端推送 `task.offered` 提示帧（传输帧、不持久化）。
+- 任务新增 → 只推送给满足规则 1–5 的**在线**执行器连接（只含摘要，不含工件内容）。WS 连接在握手时校验 token 并绑定身份：`executor` token 绑定其 `executorId`（连接存续期），`user`/`admin` 连接只收事件流、不收 `task.offered`。资格判定与 claim / 心跳 `offers` **复用同一实现**，不复制逻辑（H0 的"广播给所有连接"行为已由 S3 替换）。
+- 租约过期 / 主动 release / 转交 → 写 `assignment.expired|released` 与 `task.*` 事件，任务回池并按上面的规则推送给其他合格候选。
 
 ## 4. 控制平面协议
 
@@ -203,6 +208,7 @@ Assignment 状态：`active → completed | released | expired`。
 | POST | `/tasks/{id}/complete` | 完成：`{summary, artifactIds, links, openQuestions?}` |
 | POST | `/tasks/{id}/fail` | 失败：`{reason, retryable}` |
 | POST | `/tasks/{id}/release` | 主动放弃租约，任务回池并通知派发人 |
+| POST | `/tasks/{id}/transfer` | 持有租约者转交：`{targetUserId? \| targetRole?, comment?}`（二者至少其一）；结束当前 assignment（`released`）+ 回池 + `task.transferred` 事件；`targetRole` 显式收窄 `requiredRoles`（见 §2.3）；非持有者/终态/目标不满足角色或并发约束返回 `409`；支持 `Idempotency-Key` |
 | GET | `/events/stream?after=<seq>` | SSE 只读降级通道（WS 不可用时）；`Last-Event-ID` 语义同 `after` |
 
 ### 4.3 用户与需求接口
@@ -237,7 +243,7 @@ Assignment 状态：`active → completed | released | expired`。
 
 | 方向 | type | 触发 |
 | --- | --- | --- |
-| 服务端→客户端 | `task.offered` / `task.updated` / `task.cancelled` | 新可领取任务、租约状态变化、任务取消 |
+| 服务端→客户端 | `task.offered` / `task.updated` / `task.cancelled` / `task.transferred` | 新可领取任务、租约状态变化、任务取消、任务转交 |
 | 服务端→客户端 | `approval.requested` / `approval.decided` / `approval.expired` / `approval.withdrawn` | 门禁请求、决策、超时、撤回 |
 | 服务端→客户端 | `artifact.stale` / `demand.updated` | 上游新版本使下游工件 stale、需求状态变化 |
 | 服务端→客户端 | `server.ping` | 保活与时钟校准 |
@@ -245,7 +251,7 @@ Assignment 状态：`active → completed | released | expired`。
 
 只推送**摘要**；工件内容与上下文包走 REST 按需拉取，避免大消息与重复传输。
 
-`task.offered` 是**传输帧而非事件**（§2.3：不持久化）：`{type:"task.offered", at, subject:{type:"task",id}, task:{id,demandId,title,executorKind,requiredRoles,workspaceBinding,priority,dueAt}}`，不带 `seq`；任务新建或回池（租约过期、主动 release、执行器下线释放）时推送，客户端据此刷新可领取列表，权威状态仍以 REST/事件日志为准。H0 实现广播给所有已连接客户端（只含摘要）；按执行器资格过滤在 S3 增强。`task.updated`/`task.cancelled` 走统一事件 envelope。
+`task.offered` 是**传输帧而非事件**（§2.3：不持久化）：`{type:"task.offered", at, subject:{type:"task",id}, task:{id,demandId,title,executorKind,requiredRoles,workspaceBinding,priority,dueAt}}`，不带 `seq`；任务新建或回池（租约过期、主动 release、转交、执行器下线释放）时推送，客户端据此刷新可领取列表，权威状态仍以 REST/事件日志为准。**S3 起按执行器资格过滤**：连接在握手时绑定 `executorId`（`executor` token），推送前用与 claim 相同的 §3 规则 1–6 实时判定，只发给当前有资格领取的在线执行器；`user`/`admin` 连接只收事件流、不收该帧。客户端断线重连携带 `lastSeq`；游标超出保留窗口时用 `resync_required` 控制帧要求全量拉取。`task.updated`/`task.cancelled`/`task.transferred` 走统一事件 envelope（不按执行器过滤）。
 
 ### 4.5 SAP 入站 webhook
 

@@ -116,6 +116,14 @@ export function getExecutor(db: DatabaseSync, id: string): ExecutorRecord | null
   return row === undefined ? null : rowToRecord(row);
 }
 
+/** Executors registered by one user (S3 transfer target validation). */
+export function listExecutorsByUser(db: DatabaseSync, user: string): ExecutorRecord[] {
+  const rows = db
+    .prepare('SELECT * FROM executors WHERE user = ? ORDER BY created_at ASC')
+    .all(user) as unknown as ExecutorRow[];
+  return rows.map(rowToRecord);
+}
+
 export function listExecutors(db: DatabaseSync): ExecutorRecord[] {
   const rows = db.prepare('SELECT * FROM executors ORDER BY created_at ASC').all() as unknown as ExecutorRow[];
   return rows.map(rowToRecord);

@@ -33,10 +33,18 @@
 | --- | --- |
 | Activity Bar 视图 | 任务箱：`可领取` / `我的任务` / `等待我回答`；每项一行摘要 + 状态 + 操作 |
 | 任务详情 | 需求摘要、上游工件、验收标准、门禁状态、上下文包路径、操作按钮（领取 / 打开 / 提交 / 放弃） |
-| 状态栏 | 连接状态（在线/离线/暂停）+ 未读待办数；点击切换暂停接单 |
+| 状态栏 | 连接状态（在线/离线/暂停）+ 未读待办数（可领取 + 我的任务 + 等待我回答）；点击切换暂停接单 |
 | 通知 | 只发三类：新任务可领取、你的任务有新的确认要求、连接/权限需要处理 |
 
-命令控制在 6 个以内：`连接控制平面`、`绑定当前工作区`、`领取任务`、`打开任务`（建 worktree + 打开 + 写上下文包）、`提交工件`、`暂停接单`。
+命令控制在 6 个以内：`连接控制平面`、`绑定当前工作区`、`领取任务`、`打开任务`（建 worktree + 打开 + 写上下文包）、`提交工件`、`暂停接单`。另有 2 个**上下文动作**只出现在任务箱行上（不进命令面板）：待审批行 → 选择 `通过`/`驳回` + 意见；未读通知行 → 标记已读。
+
+「等待我回答」的数据来源（S3，接 H1 已交付 API）：
+
+- `GET /approvals?assignee=me&state=pending`：门禁条目显示 `审批 <gate> · <role>`；点击走 `POST /approvals/{id}/decisions`（approve/reject + comment），成功后该条从组内消失并刷新状态栏。
+- `GET /notifications?state=unread`：未读条目显示标题 + 需求短号；点击走 `POST /notifications/{id}/read`。与待审批绑定的 `approval.requested` 通知不重复展示（以审批条目为准）。
+- 空状态给下一步动作（例如"没有等待你回答的审批或通知；新的门禁会实时出现"），权限失败提示"重新连接控制平面"，不做静默重试。
+
+实时性：扩展启动后订阅 WS `GET /api/v1/events?after=<lastSeq>`，收到 `task.offered` / `task.updated` / `task.cancelled` / `task.transferred` / `approval.*` 等帧立即刷新任务箱与状态栏（不再只依赖 30s 轮询）；`lastSeq` 存在 `globalState`（不落工作区文件），断线按指数退避重连并 `after=lastSeq` 补齐；服务端返回 `resync_required` 时全量拉取 `GET /tasks` + `GET /events?after=` 后继续。
 
 ### 2.3 Copilot Chat 集成的四条路（按稳定性）
 
@@ -70,7 +78,9 @@
 - **离线判定**：窗口关闭（扩展 deactivate → `DELETE /executors/{id}`）、网络断（心跳超 TTL）、切换工作区（`release` 当前任务）、用户暂停。
 - **领取**：已绑定任务要求目录匹配；未绑定任务按角色/团队可见；`claim` 后持租约，续约失败立即停手并重新拉状态，避免"幽灵执行"。
 - **worktree**：默认在当前工作区直接做（操作最少）；`打开任务` 可一键创建 `git worktree` 到仓库外 `../.sap-superagent-worktrees/<taskId>`（避免污染主工作树与 `git status`，可配置为默认）。worktree 内需要各自的 `.abap.json`/本地配置，由 preflight 检查并提示。
-- **preflight**：工作区已被信任（Workspace Trust）、仓库干净或已确认、分支基线正确、`abap` 可执行且版本 ≥2.2.0、`abap doctor` 通过、Node 版本满足 abap-cli 要求、SAP 会话有效、`allowedSystems` 命中当前 SID/client。失败 → 任务转 `waiting_human`，给出下一步动作，不自动重试写操作。
+- **切换工作目录**：扩展检测到打开的目录变化时**立即** `POST /tasks/{id}/release` 已持有任务（未绑定任务同样 release），任务回池并由服务端重新派发给其他合格执行器；旧目录不再显示绑定的任务。
+- **断线重连**：WS 断线后指数退避重连（1s/2s/4s… 上限 60s，复用 presence 退避策略）并携带 `lastSeq`；游标过期（`resync_required`）时全量拉取 `GET /tasks` + `GET /events?after=`。客户端不用本地时钟判断租约过期，只用服务端 `serverTime`。
+- **preflight**：工作区已被信任（Workspace Trust）、仓库干净或已确认、分支基线正确、`abap` 可执行且版本 ≥2.2.0、`abap doctor` 通过、Node 版本满足 abap-cli 要求、SAP 会话有效、`allowedSystems` 命中当前 SID/client。失败 → **不领取/不开始**，逐条给出下一步动作（例如"确认信任该工作区""升级 abap-cli"），不自动重试写操作；任务留在池中给其他执行器（S3 不新增任务级 `waiting_human` 状态，任务状态机见 [003 §2.3](003-domain-and-protocol.md)）。
 
 ### 2.5 失败与安全
 
@@ -79,7 +89,9 @@
 | 同一目录开两个窗口 | 服务端按 `workspaceKey` 串行化，第二个 claim 返回 409 并提示 |
 | 领取后断网 | 租约到期回池；恢复后先拉任务状态再决定续跑/放弃 |
 | 服务端重启 | 指数退避重连 + `after=lastSeq`；游标失效则全量重拉 |
+| 同一任务被转交 / 被他人领走 | 事件流收到 `task.transferred`/`task.updated` 后刷新任务箱；自己的租约失效则以服务端状态为准，不继续写 |
 | 时钟偏移 | 只用服务端 `serverTime` 判断过期 |
+| 权限被撤销（401/403） | 清除 `SecretStorage` 里的 token、停止接单并提示重新授权；不静默重试（S3 客户端） |
 | SAP 会话失效 / 对象被锁 | 抛出错误、任务转 `waiting_human`，不自动重试 |
 | 任务内容不可信 | 任务文本是数据不是指令；工具白名单 + 写操作人工确认；服务端签发任务时带上允许动作清单 |
 

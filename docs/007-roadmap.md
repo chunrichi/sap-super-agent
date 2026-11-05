@@ -46,6 +46,10 @@
 
 ### S3 多人在线与派发
 
+> **状态（2026-11-05）：S3 已完成**（分支 `feat/s3-multi-user`，基线 `main@4805103`，未 push/未合入）。交付：
+> WS `task.offered` 按执行器资格过滤（连接握手绑定 `executorId`、复用 claim 资格判定、`user`/`admin` 连接不收）；`maxConcurrentPerUser`（默认 2，仅约束 vscode 人工任务）；`POST /tasks/{id}/transfer`（结束 assignment + 回池 + `task.transferred` 审计/事件 + Idempotency-Key + 409）；VSCode 客户端 WS 实时刷新、指数退避重连、`lastSeq` 存 `globalState`、`resync_required` 全量拉取；任务箱「等待我回答」接 H1 approvals/notifications；切换工作目录立即 release；客户端 preflight 失败阻断领取并给下一步动作。
+> 验证：`pnpm check`、`pnpm e2e`（新增多执行器 e2e 覆盖 009 #1–#5/#8/#9/#16，总时长 <5s）、`pnpm build`；手工冒烟四条以集成/e2e 复现（见 [handoffs/STATUS.md](../handoffs/STATUS.md) S3 行）。协议变更已同步 [003 §2.3/§3/§4.2/§4.4](003-domain-and-protocol.md) 与 `contracts/`。
+
 - **目标**：支持一个团队的真实协作。
 - **交付**：presence TTL、lease 续约/回收、资格与工作区匹配、同用户并发限制、任务转交、断线重连补事件、客户端"打开对应目录"绑定。
 - **验收**：开发者关机/断网 60 秒内任务回池且可被他人领取；未绑定任务在通用任务箱可见，已绑定任务在打开对应目录后 ≤2s 推送、10 秒内可见；重连后看到离线期间的进展；同一任务不会双写。

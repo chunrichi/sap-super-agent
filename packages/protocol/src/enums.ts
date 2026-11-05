@@ -178,6 +178,7 @@ export const EVENT_TYPES = [
   'task.completed',
   'task.failed',
   'task.released',
+  'task.transferred',
   'task.cancelled',
   'assignment.created',
   'assignment.completed',
@@ -211,6 +212,6 @@ export const DEFAULT_LEASE_TTL_MS = 60_000;
 export const DEFAULT_LEASE_RENEW_INTERVAL_MS = 20_000;
 export const DEFAULT_PRESENCE_TTL_MS = 60_000;
 export const DEFAULT_MAX_CONCURRENT = 2;
-export const DEFAULT_MAX_CONCURRENT_PER_USER = 5;
+export const DEFAULT_MAX_CONCURRENT_PER_USER = 2;
 export const DEFAULT_EVENT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 export const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;

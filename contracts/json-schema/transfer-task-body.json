@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "targetUserId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "comment": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "targetUserId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "targetRole": {
+          "type": "string",
+          "enum": [
+            "requester",
+            "consultant",
+            "developer",
+            "ops"
+          ]
+        },
+        "comment": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "targetRole"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

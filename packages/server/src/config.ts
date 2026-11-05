@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import {
   DEFAULT_EVENT_RETENTION_MS,
   DEFAULT_LEASE_TTL_MS,
+  DEFAULT_MAX_CONCURRENT_PER_USER,
   DEFAULT_PRESENCE_TTL_MS,
   IDEMPOTENCY_TTL_MS,
 } from '@sap-superagent/protocol';
@@ -120,6 +121,12 @@ export function resolveConfig(options: ServerOptions): ServerConfig {
     logger: options.logger ?? false,
     version: options.version ?? DEFAULT_VERSION,
     wsPingMs: positiveInt(options.wsPingMs, DEFAULT_WS_PING_MS, 'wsPingMs'),
+    // --- S3: per-user concurrency cap for human tasks (docs/003 §3 rule 6) ---
+    maxConcurrentPerUser: positiveInt(
+      options.maxConcurrentPerUser,
+      DEFAULT_MAX_CONCURRENT_PER_USER,
+      'maxConcurrentPerUser',
+    ),
     // --- H1: gate timeout override (null = template timeoutDays) ---
     gateTimeoutMs:
       options.gateTimeoutMs === undefined

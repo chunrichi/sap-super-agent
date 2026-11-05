@@ -9,7 +9,7 @@
 | H1 | [H1-gates-and-templates.md](H1-gates-and-templates.md) | done | h1-agent（worktree `.sap-superagent-worktrees/h1`；Lead 集成验收） | feat/h1-gates | 238fd08 | 分支自测：`pnpm check` ✅ 303 tests、`pnpm e2e` ✅ 8/8、`pnpm eval:golden` ✅ 24 cases（schema/checklist/reference 100%，人工修改率 11.2% → auto）；集成验收（integrate/h1-h2）：`pnpm check` ✅ **350 tests**、`pnpm e2e` ✅ 9/9、`pnpm eval:golden` ✅、`pnpm sap:check` ✅、`pnpm build` ✅ 8/8、curl 手工冒烟 G1→自动任务→G3→G4→done ✅ | 任务书 §1.1–§1.7 全部落地；偏差见「H1 偏差与遗留」 |
 | H2 | [H2-sap-icf-mime.md](H2-sap-icf-mime.md) | done（Phase A）；Phase B → H2-B | h2-agent（worktree `.sap-superagent-worktrees/h2`；Lead 集成验收） | feat/h2-sap | 0eb35c4 | 分支自测：`pnpm check` ✅ 299 tests、`pnpm e2e` ✅ 5/5、`pnpm sap:check` ✅ 5 pass/1 skip、`pnpm build` ✅；集成验收：SAP 链路已接到 H1 门禁运行时，e2e 9/9（含 SAP 全链路）、`pnpm sap:check` ✅；Phase B 仅只读连通，未做任何 SAP 写操作 | Phase A 交付完成；Phase B 转入 H2-B 行（用户决策 `$ZSA` + abap-cli）。偏差见「H2 Phase A 偏差与遗留」「Lead 集成验收」 |
 | H2-B | [H2-sap-icf-mime.md](H2-sap-icf-mime.md)（§1.6 Phase B） | todo | 待认领 | — | — | — | 用户决策（2026-11-05）：本地包 `$ZSA`、无 TR、全部 abap-cli、abapGit 不实现；只读核实：测试系统可达、`$ZSA` 为空。可交付：DDIC/类/ICF/MIME/ABAP Unit/ICF health；端到端回写仍缺控制平面可达 + HMAC + SSO。启动 Prompt 见 [H2 任务书](H2-sap-icf-mime.md) §1.6 |
-| S3 | [S3-multi-user-dispatch.md](S3-multi-user-dispatch.md) | todo | 待认领 | — | — | — | 多人在线与派发：WS 资格过滤、客户端实时/重连、`maxConcurrentPerUser` + 任务转交、工作区/多窗口端到端、任务箱「等待我回答」接审批、009 #1–#5/#8/#9/#16；写范围/验收/启动 Prompt 见任务书 |
+| S3 | [S3-multi-user-dispatch.md](S3-multi-user-dispatch.md) | done（分支自测通过，待 Lead 集成验收） | s3-agent（worktree `.sap-superagent-worktrees/s3`） | feat/s3-multi-user | 809390d（代码完结；fa801f5 协议 → ad49081 core → 81f234b WS 过滤 → b6fb513 transfer → 5bf90bc/607b8fc 客户端 → 809390d e2e → 本次 docs/STATUS 收尾提交） | `pnpm check` ✅ **402 tests**（protocol 59 / ai 28 / core 52 / vscode 98 / server 67 / testkit 23 / cli 44 / sap-adapter 31；contract 39 schemas / 5 examples / 19 routes）；`pnpm e2e` ✅ **15/15，3.91s**（<5s）；`pnpm build` ✅ 8/8；多执行器 e2e 覆盖 009 #1/#2/#4/#5/#8/#9/#16 + 转交冒烟（手工复现见「S3 验收复现」） | WS `task.offered` 按执行器资格过滤（连接绑定 executorId，user/admin 不收）、`maxConcurrentPerUser`（默认 2，仅 vscode）、`POST /tasks/{id}/transfer`（迁移 v5 审计、回池 + 事件链、幂等、409）、客户端 WS 实时/退避重连/lastSeq(globalState)/resync 全量拉取、任务箱「等待我回答」接 H1 approvals/notifications、工作区切换立即 release、client preflight；偏差见「S3 偏差与遗留」；未 push、未合入 main、未跑真机 Extension Host |
 
 ## H0 偏差与遗留（交接给 H1 / H2 / 用户）
 
@@ -66,6 +66,11 @@
 | 2026-11-05 | 收尾 docs PR：把「已合入 main / PR #1–#3 / CI 结果」写回 STATUS 与 HANDOFF；远端 `feat/h1-gates`、`feat/h2-sap` 分支合并后删除 |
 | 2026-11-05 | 用户决策（H2 Phase B）：目标 package 用**本地包 `$ZSA`**（`$` 前缀，无 TR，对象仅测试系统生效）；全部用 **abap-cli**，**abapGit 本轮不实现**。只读核实：测试系统可达（TLS/auth/ADT/ICF ok）、`$ZSA` 存在且为空、ICF 服务版本 warning 不阻断 |
 | 2026-11-05 | 起草 S3 任务书 [S3-multi-user-dispatch.md](S3-multi-user-dispatch.md)（起点盘点/交付物/e2e 覆盖/写范围/启动 Prompt）；新增 H2-B、S3 看板行；HANDOFF、docs/004、docs/006、sap/README 同步 `$ZSA` + abap-cli 决策 |
+| 2026-11-05 | S3 认领（s3-agent，worktree `.sap-superagent-worktrees/s3`，分支 `feat/s3-multi-user` @ main `4805103`）；基线 `pnpm check` ✅ 350 tests；协议先行提交 `fa801f5`：docs/003（WS offered 过滤规则、transfer 语义/角色池收窄、规则 6 只约束 vscode）+ protocol（`task.transferred`、`task-transfer`、transfer schema、`DEFAULT_MAX_CONCURRENT_PER_USER=2`）+ contracts 39 schemas |
+| 2026-11-05 | S3 server：core 用户并发上限 `ad49081`；WS 连接绑定 executorId + `task.offered` 资格过滤 `81f234b`（复用 claim 判定，`packages/server/test/multi-user.test.ts` 4 tests）；`POST /tasks/{id}/transfer` + 迁移 v5 审计表 `b6fb513`（`transfer.test.ts` 8 tests：旧租约失效、目标可领、事件链、幂等、全部 409 分支）；每步 `pnpm check` ✅ |
+| 2026-11-05 | S3 客户端：WS 客户端/approvals API/preflight `5bf90bc`；任务箱「等待我回答」+ 实时刷新 + 工作区切换 release + claim 前 preflight `607b8fc`（vscode 67 → 97 tests；新依赖 `ws`） |
+| 2026-11-05 | S3 多执行器 e2e `809390d`：新增 `packages/testkit/e2e/multi-user.e2e.test.ts`（6 tests）覆盖 009 #1/#2/#4/#5/#8/#9/#16 + 转交；`pnpm e2e` 9 → **15/15，3.91s**（<5s 预算） |
+| 2026-11-05 | S3 完成自测 + docs 收尾：`pnpm check` ✅ 402 tests、`pnpm e2e` ✅ 15/15（3.88s）、`pnpm build` ✅ 8/8；docs/003/005/007、README、STATUS 同步；手工冒烟四条见「S3 验收复现」 |
 
 ## H2 Phase A 偏差与遗留（交接给 H1 / Lead / 用户）
 
@@ -97,3 +102,26 @@
 - **落地（已合入 main）**：PR #1 H0 → `de173f2`；PR #2 H1 → `a510be2`（CI ✅ 56s）；PR #3 H2 → `a242afe`（CI ✅ 58s）。H2 在 H1 合入后 rebase 到新 main 并包含集成修复 `4e105c1`，合入后 **`main` 树与 `integrate/h1-h2` 完全一致**（`git diff` 为空）；main 的 push CI 全绿。本地 `integrate/h1-h2` 保留为交付对照，远端 `feat/h1-gates`/`feat/h2-sap` 合并后删除（`feat/h0-walking-skeleton` 属 PR #1，留待用户处理）。
 - **待用户/人工输入（H2-B 剩余项）**：控制平面可被测试系统访问的部署/隧道、HMAC secret 注入方式、Basis SSO/ICF 服务账号；`package` 已解决（本地包 `$ZSA`，无 TR）。真实 VSCode Extension Host 冒烟仍留发布前。
 
+
+## S3 偏差与遗留（交接给 Lead / 用户）
+
+1. **transfer 语义（保守，符合 HANDOFF 不变式 #4）**：转交 = 结束当前 assignment + 回池 + `lastHolderUserIds` 降权 + `task.transferred` 审计事件；`targetUserId` 只是审计/可见性提示，**不锁定**目标（任务仍按 docs/003 §3 规则可领）。`targetRole` 是显式收窄：`requiredRoles` 非空时目标角色必须已在其中（否则 409）；为空（原本不限角色）时允许收窄并在事件记录 `previousRequiredRoles`——这是 transfer 的显式语义，已文档化并有测试。
+2. **`maxConcurrentPerUser` 只约束 vscode 人工任务**（server-ai 系统执行器按每执行器 `maxConcurrent`）；默认值从 protocol 旧常量 5 改为任务书要求的 2（该常量 H0 起未被使用，无既有语义变化）；`ServerOptions.maxConcurrentPerUser` 可在测试/部署注入（e2e 未注入，只验证默认 2）。
+3. **WS 过滤为每帧实时计算**（连接数 × 任务数），M1 规模（几十任务/几人）足够；M2 若任务量级增大需要索引或缓存资格结果（未做，避免过度设计）。
+4. **客户端 preflight 失败 = 阻止领取/开始**并逐条给下一步动作；**未新增任务级 `waiting_human` 状态**（docs/003 §2.3 任务状态机无此状态，只有 StageRun 有），任务留在池中给其他执行器。与任务书 §1.4 "任务转 waiting_human" 的措辞有偏差，已在 docs/005 §2.5 按实现口径写明；若 Lead 要求严格一致，需要新增任务状态/端点（未做）。
+5. **未跑真机 VSCode Extension Host / VSIX**（与 H0/H1 一致）：客户端用 mock `vscode` 单测（97 tests），WS 客户端用 fake socket 单测；真实 `ws` 连接只在 server 集成测试中由 `ws` 服务端+probe 验证。发布前仍需要真机冒烟。
+6. **`task.offered` 不持久化**（协议既有语义）：断线重连不重放该帧，靠心跳 `offers` / `GET /tasks` / 事件补拉补齐；测试已覆盖"重连后推拉一致"。
+7. **客户端命令数**：保持 6 个命令面板命令；审批/通知用 2 个**上下文动作**（只在任务箱行上触发，不进面板），docs/005 §2.2 已同步。
+8. **任务箱审批行**只有 `gateKey + requiredRole + 需求短号 + 工件版本`（Approval schema 无需求标题/工件摘要）；如需更丰富展示需服务端补只读聚合字段（未做）。
+9. **迁移 v5** 只追加 `task_transfers` 审计表，未改 v1–v4；`task.transferred` 事件类型进入协议枚举 → contracts diff（39 schemas）；无破坏性变更。
+10. **未 push、未合入 main**（按任务书约束）；`packages/server/test/ws-helpers.ts` 为抽取的测试工具（原 websocket.test 局部 helper），非生产代码。
+11. **e2e 用 fake executor**（testkit），不启动真实 VSCode；多执行器 e2e 每用例独立控制平面（临时 stateDir），总时长 3.91s（基线 9/9 约 3.1s，<5s 预算）。
+
+### S3 验收复现（任务书 §2 手工冒烟，用集成/e2e 复现并记录命令）
+
+| # | 冒烟项 | 复现命令 | 实际输出 |
+| --- | --- | --- | --- |
+| 1 | 两个执行器同时在线：只有合格者收到 `task.offered`，claim 互斥（一个成功一个 409） | `pnpm --filter @sap-superagent/server exec vitest run test/multi-user.test.ts`；`pnpm --filter @sap-superagent/testkit exec vitest run --config vitest.e2e.config.ts e2e/multi-user.e2e.test.ts -t "general inbox"` | multi-user ✅ 4 tests（WS 过滤/offline+paused 不推送/推拉一致/用户并发）；e2e ✅ #16/#1 用例通过 |
+| 2 | 任务转交：原 holder lease 失效、目标可见可领、事件时间线完整 | `pnpm --filter @sap-superagent/server exec vitest run test/transfer.test.ts`；`pnpm --filter @sap-superagent/testkit exec vitest run --config vitest.e2e.config.ts e2e/multi-user.e2e.test.ts -t "transfers a held task"` | transfer ✅ 8 tests（lease 失效/目标可领/事件链/幂等/409）；e2e ✅ 转交用例通过 |
+| 3 | 切换工作目录：立即 release 回池，3 秒内出现在另一合格执行器任务箱 | `pnpm --filter @sap-superagent/testkit exec vitest run --config vitest.e2e.config.ts e2e/multi-user.e2e.test.ts -t "workspace switch"`；`pnpm --filter sap-superagent-vscode exec vitest run test/extension.test.ts -t "workspace folder changes"` | e2e ✅（release 后 `offers` 出现并 claim 成功）；客户端单测 ✅（切换目录触发 `POST /tasks/{id}/release` 并提示已释放） |
+| 4 | 审批组：G1 审批出现在「等待我回答」，通过后消失并刷新状态栏 | `pnpm --filter sap-superagent-vscode exec vitest run test/extension.test.ts -t "等待我回答"`；`pnpm --filter @sap-superagent/server exec vitest run test/gates.test.ts` | vscode ✅（审批/通知行、决策/已读动作、状态栏计数、WS 实时刷新）；server gates ✅ 13 tests（审批/驳回/超时/stale） |

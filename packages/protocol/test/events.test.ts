@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  EVENT_TYPES,
   eventEnvelopeSchema,
   eventsQuerySchema,
   eventsResponseSchema,
@@ -123,5 +124,13 @@ describe('WS client messages', () => {
 
   it('rejects server-only types coming from a client', () => {
     expect(wsClientMessageSchema.safeParse({ type: 'server.ping' }).success).toBe(false);
+  });
+});
+
+describe('task.transferred (S3)', () => {
+  it('is a persisted event type (unlike task.offered)', () => {
+    expect(EVENT_TYPES).toContain('task.transferred');
+    const persisted = { ...envelope, type: 'task.transferred' };
+    expect(eventEnvelopeSchema.safeParse(persisted).success).toBe(true);
   });
 });

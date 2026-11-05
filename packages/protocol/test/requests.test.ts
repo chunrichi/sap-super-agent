@@ -9,8 +9,10 @@ import {
   httpStatusForError,
   registerExecutorBodySchema,
   submitArtifactBodySchema,
+  transferTaskBodySchema,
+  transferTaskResponseSchema,
 } from '../src/index.js';
-import { CHECKSUM, NOW } from './fixtures.js';
+import { CHECKSUM, DEMAND_ID, NOW, ULID_A, ULID_B } from './fixtures.js';
 
 describe('error envelope (docs/003 §4.1)', () => {
   it('builds the documented shape', () => {
@@ -134,5 +136,66 @@ describe('health response', () => {
       mode: 'm1',
     });
     expect(health.status).toBe('ok');
+  });
+});
+
+describe('task transfer body (docs/003 §2.3/§4.2, S3)', () => {
+  it('accepts exactly one target: a user or a role pool', () => {
+    expect(transferTaskBodySchema.safeParse({ targetUserId: 'DEV002' }).success).toBe(true);
+    expect(transferTaskBodySchema.safeParse({ targetRole: 'developer' }).success).toBe(true);
+    expect(
+      transferTaskBodySchema.safeParse({ targetRole: 'developer', comment: '交给 ABAP 同事' })
+        .success,
+    ).toBe(true);
+  });
+
+  it('rejects both targets and no target', () => {
+    expect(
+      transferTaskBodySchema.safeParse({ targetUserId: 'DEV002', targetRole: 'developer' })
+        .success,
+    ).toBe(false);
+    expect(transferTaskBodySchema.safeParse({ comment: 'no target' }).success).toBe(false);
+    expect(transferTaskBodySchema.safeParse({}).success).toBe(false);
+  });
+
+  it('rejects unknown roles and oversized comments', () => {
+    expect(transferTaskBodySchema.safeParse({ targetRole: 'tester' }).success).toBe(false);
+    expect(
+      transferTaskBodySchema.safeParse({ targetUserId: 'DEV002', comment: 'x'.repeat(2_001) })
+        .success,
+    ).toBe(false);
+  });
+
+  it('parses the transfer response with its audit record', () => {
+    const response = transferTaskResponseSchema.parse({
+      task: {
+        id: ULID_A,
+        demandId: DEMAND_ID,
+        stageRunId: null,
+        title: '取数实现',
+        executorKind: 'vscode',
+        requiredRoles: ['developer'],
+        workspaceBinding: null,
+        priority: 'normal',
+        dueAt: null,
+        state: 'pending',
+        lastHolderUserIds: ['DEV001'],
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+      transfer: {
+        id: ULID_B,
+        taskId: ULID_A,
+        assignmentId: ULID_B,
+        fromExecutorId: ULID_A,
+        fromUserId: 'DEV001',
+        targetUserId: 'DEV002',
+        targetRole: null,
+        comment: null,
+        createdAt: NOW,
+      },
+      serverTime: NOW,
+    });
+    expect(response.transfer.targetUserId).toBe('DEV002');
   });
 });

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { newDemandId, newUlid } from '@sap-superagent/protocol';
 import { ControlPlaneClient, ControlPlaneError } from '../src/client.js';
 import {
   makeClaimResponse,
@@ -324,5 +325,127 @@ describe('ControlPlaneClient error mapping', () => {
     expect(error.status).toBe(502);
     expect(error.code).toBe('internal_error');
     expect(error.retryable).toBe(true);
+  });
+});
+
+describe('approvals, notifications and event cursor (S3)', () => {
+  const NOW = '2026-11-05T00:00:00.000Z';
+  const approval = {
+    id: newUlid(),
+    demandId: newDemandId(),
+    stageRunId: newUlid(),
+    gateKey: 'G1',
+    artifactId: newUlid(),
+    artifactVersion: 1,
+    state: 'pending',
+    requiredRole: 'consultant',
+    decision: null,
+    decidedBy: null,
+    decidedAt: null,
+    comment: null,
+    expiresAt: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+  };
+  const notification = {
+    id: newUlid(),
+    demandId: approval.demandId,
+    stageRunId: null,
+    approvalId: approval.id,
+    kind: 'approval.requested',
+    requiredRole: 'consultant',
+    title: 'G1 待审批',
+    body: null,
+    createdAt: NOW,
+    readAt: null,
+  };
+
+  it('lists pending approvals for me', async () => {
+    stubFetch(() => jsonResponse({ approvals: [approval], serverTime: NOW }));
+    const client = newClient();
+
+    const response = await client.listApprovals({ assignee: 'me', state: 'pending' });
+
+    const url = new URL(calls[0]!.url);
+    expect(url.pathname).toBe('/api/v1/approvals');
+    expect(url.searchParams.get('assignee')).toBe('me');
+    expect(url.searchParams.get('state')).toBe('pending');
+    expect(response.approvals[0]?.gateKey).toBe('G1');
+  });
+
+  it('decides an approval with a comment', async () => {
+    stubFetch(() =>
+      jsonResponse({
+        approval: { ...approval, state: 'approved', decision: 'approve', decidedBy: 'dev' },
+        serverTime: NOW,
+      }),
+    );
+    const client = newClient();
+
+    const response = await client.decideApproval(approval.id, {
+      decision: 'approve',
+      comment: '需求清晰',
+    });
+
+    expect(calls[0]!.url).toBe(
+      `http://127.0.0.1:3080/api/v1/approvals/${approval.id}/decisions`,
+    );
+    expect(bodyOf(calls[0]!)).toEqual({ decision: 'approve', comment: '需求清晰' });
+    expect(response.approval.state).toBe('approved');
+  });
+
+  it('lists unread notifications and marks one read', async () => {
+    stubFetch((url) =>
+      url.endsWith('/read')
+        ? jsonResponse({ notification: { ...notification, readAt: NOW }, serverTime: NOW })
+        : jsonResponse({ notifications: [notification], serverTime: NOW }),
+    );
+    const client = newClient();
+
+    const listed = await client.listNotifications({ state: 'unread' });
+    expect(new URL(calls[0]!.url).searchParams.get('state')).toBe('unread');
+    expect(listed.notifications).toHaveLength(1);
+
+    const read = await client.markNotificationRead(notification.id);
+    expect(calls[1]!.url).toBe(
+      `http://127.0.0.1:3080/api/v1/notifications/${notification.id}/read`,
+    );
+    expect(calls[1]!.init.method).toBe('POST');
+    expect(read.notification.readAt).toBe(NOW);
+  });
+
+  it('replays events over REST with the cursor', async () => {
+    stubFetch(() => jsonResponse({ events: [], lastSeq: 42, earliestSeq: 1 }));
+    const client = newClient();
+
+    const response = await client.listEvents(17, 100);
+
+    const url = new URL(calls[0]!.url);
+    expect(url.pathname).toBe('/api/v1/events');
+    expect(url.searchParams.get('after')).toBe('17');
+    expect(url.searchParams.get('limit')).toBe('100');
+    expect(response.lastSeq).toBe(42);
+  });
+
+  it('exposes a ws URL that carries the exchanged executor token', async () => {
+    stubFetch(() => jsonResponse(makeRegisterResponse()));
+    const client = new ControlPlaneClient({
+      baseUrl: 'http://127.0.0.1:3080',
+      token: 'user-token',
+    });
+
+    expect(new URL(client.eventStreamUrl()).searchParams.get('token')).toBe('user-token');
+    await client.registerExecutor({
+      kind: 'vscode',
+      user: 'dev',
+      capabilities: [],
+      roles: [],
+      workspaces: [],
+      protocolVersion: '1',
+    });
+    const url = new URL(client.eventStreamUrl());
+    expect(url.protocol).toBe('ws:');
+    expect(url.pathname).toBe('/api/v1/events');
+    expect(url.searchParams.get('token')).toBe('executor-token');
   });
 });

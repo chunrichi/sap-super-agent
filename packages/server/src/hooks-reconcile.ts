@@ -101,7 +101,8 @@ async function main(): Promise<void> {
   } else {
     env['SA_HOOKS_CONFIG'] = resolve(REPO_ROOT, 'examples/hooks.yaml');
   }
-  const hooks = resolveHooksConfig(env, REPO_ROOT);
+  // Read-only: reconcile never signs or verifies, so it works without secrets.
+  const hooks = resolveHooksConfig(env, REPO_ROOT, { requireSecrets: false });
   const dbPath = resolve(options.stateDir, 'state.db');
   const slaMs = Math.round(options.slaHours * 60 * 60 * 1_000);
 

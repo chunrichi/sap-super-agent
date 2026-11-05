@@ -146,7 +146,7 @@ hooks:
 
 ## 7. 对账
 
-`pnpm hooks:reconcile`（只读；`--json` 输出机器可读报告；`--fail-on-diff` 时有差异退出码 3，默认 0）：
+`pnpm hooks:reconcile`（只读；`--state-dir` / `--config` / `--sla-hours` / `--json` / `--fail-on-diff`；**不需要启用 hook 的 secret**——它只读库与外部列表，不签名/验签；有差异默认退出 0，`--fail-on-diff` 时 3，用法错误 2）：
 
 - 读取 `SA_STATE_DIR`（默认 `.sap-superagent/state`）的 SQLite 与同一份 Hook 配置；
 - **外部有、控制平面无**：配置了 `reconcileUrl` 时拉外部列表（JSON 数组或 `{items:[]}`，元素含 `externalId`/`id`/`key`），与本地已投递的外部 ID 比对；没有 `reconcileUrl` 时输出"无法比对（未配置 reconcileUrl）"说明；

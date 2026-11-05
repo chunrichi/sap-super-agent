@@ -110,6 +110,15 @@ function resolveRetry(definition: HookDefinition): ResolvedHookRetryPolicy {
   };
 }
 
+export interface ResolveHooksConfigOptions {
+  /**
+   * Require the secret of every enabled hook (default `true`, used by the
+   * server). Read-only consumers such as `hooks:reconcile` pass `false`: they
+   * never sign or verify anything and must work without ops exporting secrets.
+   */
+  requireSecrets?: boolean;
+}
+
 /**
  * Resolve `SA_HOOKS_CONFIG` (default `examples/hooks.yaml` relative to `cwd`)
  * into runtime config. `env` is the already-resolved environment (real vars over
@@ -118,7 +127,9 @@ function resolveRetry(definition: HookDefinition): ResolvedHookRetryPolicy {
 export function resolveHooksConfig(
   env: NodeJS.ProcessEnv,
   cwd: string = process.cwd(),
+  options: ResolveHooksConfigOptions = {},
 ): HooksRuntimeConfig {
+  const requireSecrets = options.requireSecrets ?? true;
   const configuredPath = envValue(env['SA_HOOKS_CONFIG']);
   const explicit = configuredPath !== undefined;
   const configPath = resolve(cwd, configuredPath ?? DEFAULT_HOOKS_CONFIG_PATH);
@@ -196,7 +207,7 @@ export function resolveHooksConfig(
 
     const secretEnvName = definition.secretRef.slice('env:'.length);
     const secret = envValue(env[secretEnvName]) ?? null;
-    if (definition.enabled && secret === null) {
+    if (definition.enabled && secret === null && requireSecrets) {
       throw new Error(
         `hook "${definition.id}" is enabled but secret "${definition.secretRef}" is not set; ` +
           `export ${secretEnvName}=<secret> (never commit it) or set enabled: false (docs/008 §6)`,

@@ -117,6 +117,15 @@ describe('resolveHooksConfig (docs/008 §6)', () => {
     );
   });
 
+  it('can resolve a read-only config without enabled-hook secrets (hooks:reconcile)', () => {
+    const dir = tempDir();
+    const path = writeConfig(dir, 'ok.yaml', VALID_HOOK);
+    const config = resolveHooksConfig({ SA_HOOKS_CONFIG: path }, dir, { requireSecrets: false });
+    expect(config.loaded).toBe(true);
+    expect(config.hooks[0]?.enabled).toBe(true);
+    expect(config.hooks[0]?.secret).toBeNull();
+  });
+
   it('resolves retry defaults, secrets and worker tunables', () => {
     const dir = tempDir();
     const path = writeConfig(dir, 'ok.yaml', VALID_HOOK);

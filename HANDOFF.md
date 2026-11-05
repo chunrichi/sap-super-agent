@@ -6,9 +6,9 @@
 ## 0. 一分钟了解
 
 - **项目**：面向 SAP 研发交付的 super-agent。需求记录在 SAP（ICF + MIME 自建 Web），编排在可移植控制平面（本地 M1 / 独立服务 M2），编码在开发者 VSCode（Copilot Chat 人机协作），重复文档由服务端 AI（BYOK）主动生成。
-- **当前状态（2026-11-05）**：**S0–S4 与 H2 Phase A/B 已完成并合入 `main`**（PR #1–#11；main = `36e9c75`，CI 全绿）。H1（门禁/模板/checklist/golden set）、H2 Phase A（fake ICF + `sap-adapter` + `/hooks/sap` + 回写 worker）+ **Phase B**（测试系统本地包 `$ZSA`：6 表/3 类/ICF `ZSA`/MIME/ABAP Unit 6/6）、S3（多人在线与派发）、**S4（Hook 契约 + `http` 示例目标：统一信封、配置订阅、出站队列/重试/死信/重放、`GET /hooks`、入站回执迁移 v6、`pnpm hooks:reconcile`、四个占位适配器）** 均已完成。main 门禁：`pnpm check`（**440 tests**，contract 47 schemas / 7 examples / 22 routes）/ `pnpm e2e`（**16/16，~4s**）/ `pnpm eval:golden` / `pnpm sap:check`（离线 5 pass；在线 6 pass 需测试系统）/ `pnpm build` 全绿。剩余为**人工/环境输入项**（H2-B 端到端 SSO/控制平面可达/HMAC/SM36、真机 VSIX 冒烟、abap-cli issue #34），详见 [handoffs/STATUS.md](handoffs/STATUS.md)「Lead 集成验收（S3 + H2-B）」。 **S5（SAP 宿主受限模式 / M3）Phase A 已合入 `main`（PR #13，merge `1e556f0`，CI ✅ 1m9s）**：契约 §4.8 + v7 job 队列/租约/幂等 + SAP job API（HMAC）+ ABAP `ZCL_ZSA_AI_BATCH` + FakeAiGateway/FakeSapAiBatch + 无 executor 全链路 e2e + docs/010 M3 部署；门禁 `pnpm check` **469 tests**（contract 59 schemas / 9 examples / 27 routes）/ `pnpm e2e` **17/17，~4.3s** / `pnpm build` 8/8 / `pnpm sap:check`（离线 5 pass；`SA_SAP_CHECK_ONLINE=1` 在线 6 pass）；**Phase B 部分完成**（测试系统：对象已激活、`abap check syntax` 通过、ABAP Unit 15/15；收尾 PR #14 merge `44b67a1`；其余输入 blocked，见 STATUS「S5 偏差与遗留」「S5 Phase B 进展」）。
-- **当前冲刺（2026-11-05 起）**：**S5（SAP 宿主受限模式 / M3：SAP 侧批处理 AI + SAP 内审批）Phase A 已合入 `main`（PR #13）；Phase B 已完成 SAP 侧可独立部分（对象部署/激活、`abap check syntax`、ABAP Unit 15/15、`abap pull --active` 回拉一致），剩余 blocked 输入：控制平面可达 + HMAC/服务账号、SM36/bgRFC、企业 AI 网关 URL/model/key（[docs/010 §9.3](docs/010-m3-deployment.md#93-phase-b-人工输入清单blocked-判据)）。任务书/交接/协议/文档见 [S5-sap-hosted-mode.md](handoffs/S5-sap-hosted-mode.md)、[S5-execution-handoff.md](handoffs/S5-execution-handoff.md)、[docs/003 §4.8](docs/003-domain-and-protocol.md#48-sap-批处理-ai-执行器m3s5)、[docs/010](docs/010-m3-deployment.md)。
-- **下一棒**：① 补齐 S5 Phase B 剩余人工输入（控制平面可达 + `SA_SAP_HOOK_SECRET` 注入、CP→SAP 服务账号、SM36 窗口、企业 AI 网关 URL/model/key + 安全存储/TLS）→ 按 docs/010 §9.2 完成 B3–B10（`ZSA_CFG` 写入、SM36、端到端 M3 证据，不伪造）；② 发版前 VSCode Extension Host/VSIX 冒烟；③ abap-cli [issue #34](https://github.com/chunrichi/abap-cli/issues/34) 修复后重建 DDIC（EXCLASS not-extensible）。
+- **当前状态（2026-11-05）**：**S0–S5 Phase A 与 H2 Phase A/B 已完成并合入 `main`**（PR #1–#16；main = `370286e`，CI 全绿）。H1（门禁/模板/checklist/golden set）、H2 Phase A（fake ICF + `sap-adapter` + `/hooks/sap` + 回写 worker）+ **Phase B**（测试系统本地包 `$ZSA`：6 表/3 类/ICF `ZSA`/MIME/ABAP Unit 6/6）、S3（多人在线与派发）、**S4（Hook 契约 + `http` 示例目标：统一信封、配置订阅、出站队列/重试/死信/重放、`GET /hooks`、入站回执迁移 v6、`pnpm hooks:reconcile`、四个占位适配器）** 均已完成。main 门禁：`pnpm check`（**440 tests**，contract 47 schemas / 7 examples / 22 routes）/ `pnpm e2e`（**16/16，~4s**）/ `pnpm eval:golden` / `pnpm sap:check`（离线 5 pass；在线 6 pass 需测试系统）/ `pnpm build` 全绿。剩余为**人工/环境输入项**（H2-B 端到端 SSO/控制平面可达/HMAC/SM36、真机 VSIX 冒烟、abap-cli issue #34），详见 [handoffs/STATUS.md](handoffs/STATUS.md)「Lead 集成验收（S3 + H2-B）」。 **S5（SAP 宿主受限模式 / M3）Phase A 已合入 `main`（PR #13，merge `1e556f0`，CI ✅ 1m9s）**：契约 §4.8 + v7 job 队列/租约/幂等 + SAP job API（HMAC）+ ABAP `ZCL_ZSA_AI_BATCH` + FakeAiGateway/FakeSapAiBatch + 无 executor 全链路 e2e + docs/010 M3 部署；门禁 `pnpm check` **469 tests**（contract 59 schemas / 9 examples / 27 routes）/ `pnpm e2e` **17/17，~4.3s** / `pnpm build` 8/8 / `pnpm sap:check`（离线 5 pass；`SA_SAP_CHECK_ONLINE=1` 在线 6 pass）；**Phase B 部分完成**（测试系统：对象已激活、`abap check syntax` 通过、ABAP Unit 15/15；收尾 PR #14 merge `44b67a1`；其余输入 blocked，见 STATUS「S5 偏差与遗留」「S5 Phase B 进展」）。**下一棒交接已就绪**：[handoffs/S5-phase-b-handoff.md](handoffs/S5-phase-b-handoff.md)（Phase B 人工输入清单 + B3–B10 执行步骤 + v1.0 发布准备清单 + 启动 Prompt）。
+- **当前冲刺（2026-11-05 起）**：**S5-B Phase B 收尾 + v1.0 发布准备**。Phase A 已合入 `main`（PR #13）；Phase B 已完成 SAP 侧可独立部分（对象部署/激活、`abap check syntax`、ABAP Unit 15/15、`abap pull --active` 回拉一致），剩余 blocked 输入：控制平面可达 + HMAC/服务账号、SM36/bgRFC、企业 AI 网关 URL/model/key（[docs/010 §9.3](docs/010-m3-deployment.md#93-phase-b-人工输入清单blocked-判据)）。**接手先读 [handoffs/S5-phase-b-handoff.md](handoffs/S5-phase-b-handoff.md)**（执行步骤/输入清单/发布准备/启动 Prompt）。
+- **下一棒**：见 [handoffs/S5-phase-b-handoff.md](handoffs/S5-phase-b-handoff.md)。① 拿到人工输入后按 docs/010 §9.2 完成 Phase B B3–B10（`ZSA_CFG` 写入、SM36、端到端 M3 证据，不伪造）；② 无输入时先做 v1.0 发布准备（README 复跑、golden eval、VSIX 打包方案与真实 Extension Host 冒烟、CHANGELOG/tag、文档链接检查）；③ abap-cli [issue #34](https://github.com/chunrichi/abap-cli/issues/34) 修复后重建 DDIC（可选）。
 
 ## 1. 阅读顺序
 
@@ -20,6 +20,7 @@
    - S2：[004-sap.md](docs/004-sap.md)、[008-hooks.md](docs/008-hooks.md)
    - S4：[008-hooks.md](docs/008-hooks.md)、[003 §4.4/§4.7](docs/003-domain-and-protocol.md)、[009 #11](docs/009-testing.md)
    - S5：[003 §4.4/§4.8](docs/003-domain-and-protocol.md)、[004 §3/§7](docs/004-sap.md)、[005 §3.3](docs/005-clients-and-ai.md)、[009 #15](docs/009-testing.md)、docs/010-m3-deployment.md（S5 新建）、`sap/README.md`（Phase B）
+   - S5-B（当前）：[handoffs/S5-phase-b-handoff.md](handoffs/S5-phase-b-handoff.md)（Phase B 输入清单/B3–B10 步骤/测试系统现状/发布准备/启动 Prompt）
 5. [docs/006-repo-and-git.md](docs/006-repo-and-git.md)：目录、提交、PR 约定
 6. [AGENTS.md](AGENTS.md) 与 `.agents/skills/abap-cli*/SKILL.md`（SAP 任务必须加载技能后再动手）
 
@@ -46,16 +47,17 @@
 | **S3** | [handoffs/S3-multi-user-dispatch.md](handoffs/S3-multi-user-dispatch.md) | S3：多人在线与派发（WS 资格过滤、客户端实时、任务转交、工作区匹配、任务箱审批组） | S0–S2 Phase A | `packages/core/**`、`packages/server/**`、`packages/protocol/**`、`packages/clients/vscode/**`、`packages/testkit/**`、`contracts/**`、`docs/003/005/007` |
 | **S4** | [handoffs/S4-hooks.md](handoffs/S4-hooks.md) | S4：Hook 契约 + `http` 示例目标（配置订阅、出站队列/重试/死信、管理/重放、回执、对账、四个占位适配器文档） | H0–S3 | `packages/protocol/**`、`packages/server/**`、`packages/testkit/**`、`contracts/**`、`docs/003/008/007`、`examples/hooks*`、`scripts/hooks-reconcile.mjs` |
 | **S5** | [handoffs/S5-sap-hosted-mode.md](handoffs/S5-sap-hosted-mode.md) | S5/M3：SAP 批处理 AI 阶段（job 队列/租约/幂等 + ABAP 调企业 AI 网关）+ SAP 内审批推进 + M3 部署文档（Phase A 离线；Phase B 真机依赖人工输入） | H0–S4（尤其 S2/S4 的 ICF、HMAC、审批联邦） | `packages/protocol/**`、`packages/server/**`、`packages/ai/**`（加法）、`packages/testkit/**`、`packages/sap-adapter/**`（加法）、`contracts/**`、`docs/003/004/005/007/009`、`docs/010-m3-deployment.md`、`sap/**`、`scripts/sap-check.mjs`、`README.md`、`handoffs/STATUS.md` |
+| **S5-B** | [handoffs/S5-phase-b-handoff.md](handoffs/S5-phase-b-handoff.md) | Phase B 真机收尾（ZSA_CFG/SM36/端到端 M3/失败演练/数据边界）+ v1.0 发布准备（VSIX 冒烟/CHANGELOG/链接检查） | S5 Phase A（已合入 main）+ 人工输入（CP 可达/HMAC、服务账号、SM36、企业 AI 网关） | `sap/**`、`docs/010`、`sap/README.md`、`handoffs/STATUS.md`；发布准备另涉及 `packages/clients/vscode/**`、`README.md`、`scripts/**` |
 
 ```text
-H0/H1/H2（Phase A+B）/S3/S4 ──> main（PR #1–#11，CI 绿）
+H0/H1/H2（Phase A+B）/S3/S4/S5 Phase A ──> main（PR #1–#16，CI 绿；main = 370286e）
 
-main ──┬──> S5 Phase A 已交付于 feat/s5-sap-hosted（待评审/合入：契约 §4.8 + v7 队列/租约/幂等 + SAP job API + ABAP ZCL_ZSA_AI_BATCH + e2e + docs/010）
-       ├──> 人工项：S5 Phase B 真机（= H2-B 输入 + 企业 AI 网关：控制平面可达/HMAC/服务账号/SM36）
-       └──> 发版前：真实 VSCode Extension Host / VSIX 冒烟
+main ──┬──> S5-B Phase B 收尾（需人工输入：CP 可达/HMAC/服务账号、SM36、企业 AI 网关；步骤见 handoffs/S5-phase-b-handoff.md）
+       ├──> v1.0 发布准备（VSIX 真实 Extension Host 冒烟、CHANGELOG/tag、文档链接检查、golden eval）
+       └──> 人工项：H2-B 端到端（与 S5-B 输入重叠，可一并完成）
 ```
 
-> **当前进度（2026-11-05）**：S0–S4 与 H2 Phase A/B 全部完成并合入 `main`（PR #1–#11，CI 全绿）；**S5 Phase A 已合入 `main`（PR #13，merge `1e556f0`）**，Phase B 已完成 SAP 侧可独立部分（对象激活、`abap check syntax`、ABAP Unit 15/15、在线 `sap:check` 6 pass），其余输入 blocked。详见 [handoffs/STATUS.md](handoffs/STATUS.md) S5 行、「S5 偏差与遗留」「S5 验收复现」「S5 Phase B 进展」。
+> **当前进度（2026-11-05）**：S0–S5 Phase A 与 H2 Phase A/B 全部完成并合入 `main`（PR #1–#16，CI 全绿；main = `370286e`）。S5 Phase B 已完成 SAP 侧可独立部分（对象激活、`abap check syntax`、ABAP Unit 15/15、在线 `sap:check` 6 pass），其余输入 blocked。**接手先读 [handoffs/S5-phase-b-handoff.md](handoffs/S5-phase-b-handoff.md)**；详细证据见 [handoffs/STATUS.md](handoffs/STATUS.md) S5/S5-B 行、「S5 Phase B 进展」。
 
 - 同一时刻**一个 Agent 只做一个任务**。需要并行时，在 `handoffs/STATUS.md` 登记 owner + 写范围，避免两个 Agent 改同一目录。
 - 历史写范围交集提示：H2 与 H1 的 `packages/server` 交集已合并（H1 门禁 + H2 hooks 并存）；S5 与既有代码的交集在 `workers/stage-runner.ts`（委派点）、`stage-engine.ts`（抽公共完成函数）与 `db/migrations.ts`（v7）；共享文件追加式改动 + `// --- S5: ... ---`。
@@ -114,7 +116,7 @@ pnpm e2e
 | MCP | v1.1 可选；本轮不实现 |
 | SAP 系统 | 只连测试系统；**Phase B 用本地包 `$ZSA`（无 TR，对象仅测试系统生效）**；对象一律用 abap-cli 建，**abapGit 本轮不实现**；不自动激活生产 |
 | 服务端模型 | BYOK；无 Key 时用 fake provider |
-| M3（SAP 内批处理 AI，S5） | 任务书 [handoffs/S5-sap-hosted-mode.md](handoffs/S5-sap-hosted-mode.md)；**Phase A 已合入 `main`（PR #13，merge `1e556f0`）**（Team 并行：server-core/server-tests/testkit-e2e/abap-sap/docs-m3 + Lead 契约/集成）；默认关闭（`SA_SAP_AI_BATCH=1` 才启用）、不改 H0–S4、迁移从 v7 起、不新增依赖、SAP 只做批处理执行器不做交互式 agent；**Phase B 部分完成**（SAP 侧对象+ABAP Unit 15/15），剩余 blocked：控制平面可达 + HMAC/服务账号、SM36、企业 AI 网关（docs/010 §9.3） |
+| M3（SAP 内批处理 AI，S5） | 任务书 [handoffs/S5-sap-hosted-mode.md](handoffs/S5-sap-hosted-mode.md)；**Phase A 已合入 `main`（PR #13，merge `1e556f0`）**（Team 并行：server-core/server-tests/testkit-e2e/abap-sap/docs-m3 + Lead 契约/集成）；默认关闭（`SA_SAP_AI_BATCH=1` 才启用）、不改 H0–S4、迁移从 v7 起、不新增依赖、SAP 只做批处理执行器不做交互式 agent；**Phase B 部分完成**（SAP 侧对象+ABAP Unit 15/15），剩余 blocked：控制平面可达 + HMAC/服务账号、SM36、企业 AI 网关（docs/010 §9.3）；**接手执行步骤见 [handoffs/S5-phase-b-handoff.md](handoffs/S5-phase-b-handoff.md)** |
 | 门禁 | H1 默认模板 3 阶段 G1/G3/G4；PDO 6 阶段作为预设 |
 | 多人在线（S3） | 任务书 [handoffs/S3-multi-user-dispatch.md](handoffs/S3-multi-user-dispatch.md)；worktree `.sap-superagent-worktrees/s3`，分支 `feat/s3-<slug>` |
 | H2-B 剩余 | 端到端需人工：Basis SSO/ICF 登录、控制平面可从测试系统访问 + HMAC secret 注入、控制平面→SAP 服务账号、SM36/bgRFC 调度；本轮只做本地包对象 + ABAP Unit + ICF 节点部署与离线/在线校验 |
@@ -126,6 +128,6 @@ pnpm e2e
 
 让新 Agent 在仓库根目录第一次发言时带上：
 
-> 你在 `/Users/lei/ai_space/sap_super_agent` 工作（从最新 `main` 新建独立 worktree，见 `handoffs/S5-execution-handoff.md` §1）。先读 `HANDOFF.md`、`handoffs/STATUS.md`、[handoffs/S5-sap-hosted-mode.md](handoffs/S5-sap-hosted-mode.md)（任务书）、[handoffs/S5-execution-handoff.md](handoffs/S5-execution-handoff.md)（可复用接口/默认决策/环境坑/启动 Prompt），再读 `docs/003` §4.4 与（将新增的）§4.8、`docs/004` §3/§7、`docs/005` §3.3、`docs/009 #15`、`docs/002` §6/§7；Phase B 再加载 `.agents/skills/abap-cli*/SKILL.md`。S0–S4 与 H2 Phase A/B 已完成并合入 `main`（440 tests / e2e 16/16）。**Phase A 纯离线先交付，Phase B 只有拿到人工输入才做**。严格按任务书写范围与验收标准执行；完成后更新 `handoffs/STATUS.md` 的 S5 行并回报。不要越过任务边界，不要直推 `main`。
+> 你在 `/Users/lei/ai_space/sap_super_agent` 工作（`main` 应为 `370286e` 或更新；需要隔离时从最新 `main` 建 worktree）。先读 `HANDOFF.md`、`handoffs/STATUS.md`、**[handoffs/S5-phase-b-handoff.md](handoffs/S5-phase-b-handoff.md)**（Phase B 输入清单/B3–B10 步骤/测试系统现状/发布准备/启动 Prompt），再按需读 `docs/003` §4.8、`docs/010` §9、`sap/README.md`；SAP 操作前加载 `.agents/skills/abap-cli*/SKILL.md`。现状：S0–S5 Phase A 与 H2 Phase A/B 已合入 `main`（469 tests / e2e 17/17）；S5 Phase B 已完成 SAP 侧对象部署 + ABAP Unit 15/15，剩余依赖人工输入。**有输入**按 handoff §4 完成 B3–B10 并收集脱敏证据；**无输入**记录 blocked 后转做 v1.0 发布准备。只连测试系统、不伪造真机结果、不直推 `main`；每完成子项更新 `handoffs/STATUS.md` 并提交（Conventional Commits + `git commit -s`）。
 
 Lead/用户可用 `handoffs/STATUS.md` 之外的 `git log --oneline` 与 `pnpm check` 交叉验证进度。

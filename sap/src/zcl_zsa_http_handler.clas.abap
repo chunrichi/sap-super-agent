@@ -66,17 +66,20 @@ CLASS zcl_zsa_http_handler DEFINITION PUBLIC FINAL CREATE PUBLIC.
 
     METHODS handle_demand_create
       IMPORTING io_request  TYPE REF TO if_http_request
-                io_response TYPE REF TO if_http_response.
+                io_response TYPE REF TO if_http_response
+      RAISING   cx_uuid_error.
 
     METHODS handle_demand_update
       IMPORTING io_request  TYPE REF TO if_http_request
                 io_response TYPE REF TO if_http_response
-                iv_demand_id TYPE string.
+                iv_demand_id TYPE string
+      RAISING   cx_uuid_error.
 
     METHODS handle_demand_approval
       IMPORTING io_request  TYPE REF TO if_http_request
                 io_response TYPE REF TO if_http_response
-                iv_demand_id TYPE string.
+                iv_demand_id TYPE string
+      RAISING   cx_uuid_error.
 
     METHODS serve_mime
       IMPORTING io_request  TYPE REF TO if_http_request
@@ -94,7 +97,8 @@ CLASS zcl_zsa_http_handler DEFINITION PUBLIC FINAL CREATE PUBLIC.
     METHODS enqueue_event
       IMPORTING iv_type      TYPE string
                 iv_demand_id TYPE string
-                iv_payload   TYPE string.
+                iv_payload   TYPE string
+      RAISING   cx_uuid_error.
 
     METHODS artifacts_json
       IMPORTING iv_demand_id     TYPE string
@@ -345,7 +349,7 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
     DATA(lv_now) = zcl_zsa_json=>now_tstmp( ).
     DATA ls_demand TYPE zsa_demand.
     ls_demand = VALUE zsa_demand(
-      client           = sy-mandt
+      mandt            = sy-mandt
       demand_id        = cl_system_uuid=>create_uuid_c32_static( )
       demand_no        = next_demand_no( )
       title            = ls_in-title
@@ -372,15 +376,17 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
     ENDIF.
     DATA(lv_acceptance) = concat_lines_of( table = ls_in-acceptance_criteria
                                            sep   = cl_abap_char_utilities=>newline ).
-    INSERT zsa_demand_t FROM VALUE zsa_demand_t(
-      client      = sy-mandt
+    DATA ls_demand_t TYPE zsa_demand_t.
+    ls_demand_t = VALUE zsa_demand_t(
+      mandt       = sy-mandt
       demand_id   = ls_demand-demand_id
       lang        = sy-langu
       description = ls_in-description
       acceptance  = lv_acceptance ).
+    INSERT zsa_demand_t FROM ls_demand_t.
     enqueue_event(
       iv_type      = `demand.submitted`
-      iv_demand_id = ls_demand-demand_id
+      iv_demand_id = CONV string( ls_demand-demand_id )
       iv_payload   = `{"type":"demand.submitted","demand":` &&
                      zcl_zsa_json=>demand_to_json( is_demand = ls_demand
                                                    iv_description = ls_in-description
@@ -431,30 +437,33 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
     ls_demand-changed_at = zcl_zsa_json=>now_tstmp( ).
     UPDATE zsa_demand FROM ls_demand.
 
-    LOOP AT ls_patch-artifacts INTO DATA(ls_artifact).
-      MODIFY zsa_artifact FROM VALUE zsa_artifact(
-        client       = sy-mandt
-        artifact_id  = ls_artifact-artifact_id
+    DATA ls_artifact TYPE zsa_artifact.
+    LOOP AT ls_patch-artifacts INTO DATA(ls_artifact_in).
+      ls_artifact = VALUE zsa_artifact(
+        mandt        = sy-mandt
+        artifact_id  = ls_artifact_in-artifact_id
         demand_id    = iv_demand_id
-        stage_key    = ls_artifact-stage_key
-        stage_run_id = ls_artifact-stage_run_id
-        kind         = COND char30( WHEN ls_artifact-kind IS INITIAL THEN `requirement_analysis`
-                                    ELSE ls_artifact-kind )
-        version      = COND i( WHEN ls_artifact-version IS INITIAL THEN 1 ELSE ls_artifact-version )
-        checksum     = ls_artifact-checksum
-        content_ref  = ls_artifact-content_ref
-        content_type = COND char128( WHEN ls_artifact-content_type IS INITIAL THEN `application/json`
-                                     ELSE ls_artifact-content_type )
-        status       = COND char20( WHEN ls_artifact-status IS INITIAL THEN `generated`
-                                    ELSE ls_artifact-status )
+        stage_key    = ls_artifact_in-stage_key
+        stage_run_id = ls_artifact_in-stage_run_id
+        kind         = COND char30( WHEN ls_artifact_in-kind IS INITIAL THEN `requirement_analysis`
+                                    ELSE ls_artifact_in-kind )
+        version      = COND i( WHEN ls_artifact_in-version IS INITIAL THEN 1 ELSE ls_artifact_in-version )
+        checksum     = ls_artifact_in-checksum
+        content_ref  = ls_artifact_in-content_ref
+        content_type = COND char128( WHEN ls_artifact_in-content_type IS INITIAL THEN `application/json`
+                                     ELSE ls_artifact_in-content_type )
+        status       = COND char20( WHEN ls_artifact_in-status IS INITIAL THEN `generated`
+                                    ELSE ls_artifact_in-status )
         author_type  = `ai`
         author_id    = `server-ai`
         created_at   = zcl_zsa_json=>now_tstmp( ) ).
+      MODIFY zsa_artifact FROM ls_artifact.
     ENDLOOP.
 
     IF ls_patch-approval-state IS NOT INITIAL.
-      MODIFY zsa_approval FROM VALUE zsa_approval(
-        client        = sy-mandt
+      DATA ls_approval TYPE zsa_approval.
+      ls_approval = VALUE zsa_approval(
+        mandt         = sy-mandt
         approval_id   = cl_system_uuid=>create_uuid_c32_static( )
         demand_id     = iv_demand_id
         stage_key     = ls_demand-stage_key
@@ -464,6 +473,7 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
         decided_by    = ls_patch-approval-decided_by
         decided_at    = zcl_zsa_json=>now_tstmp( )
         decision_comment = ls_patch-approval-comment ).
+      MODIFY zsa_approval FROM ls_approval.
     ENDIF.
     COMMIT WORK AND WAIT.
     respond_json( io_response = io_response iv_status = 200
@@ -490,8 +500,9 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
     DATA(lv_now) = zcl_zsa_json=>now_tstmp( ).
     DATA(lv_state) = COND char20( WHEN ls_in-decision = `approve` THEN `approved` ELSE `rejected` ).
     DATA(lv_approval_id) = cl_system_uuid=>create_uuid_c32_static( ).
-    INSERT zsa_approval FROM VALUE zsa_approval(
-      client      = sy-mandt
+    DATA ls_approval TYPE zsa_approval.
+    ls_approval = VALUE zsa_approval(
+      mandt       = sy-mandt
       approval_id = lv_approval_id
       demand_id   = iv_demand_id
       stage_key   = COND char30( WHEN ls_in-stage_key IS INITIAL THEN ls_demand-stage_key
@@ -502,6 +513,7 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
       decided_by  = ls_in-decided_by
       decided_at  = lv_now
       decision_comment = ls_in-comment ).
+    INSERT zsa_approval FROM ls_approval.
     ls_demand-version = ls_demand-version + 1.
     ls_demand-changed_at = lv_now.
     UPDATE zsa_demand FROM ls_demand.
@@ -538,10 +550,10 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
       lv_file = `/index.html`.
     ENDIF.
     DATA(lv_url) = `/zsa/ui` && lv_file.
-    DATA lo_mime TYPE REF TO cl_mime_repository_api.
+    DATA lo_mime TYPE REF TO if_mr_api.
     DATA lv_content TYPE xstring.
     DATA lv_mime TYPE string.
-    CREATE OBJECT lo_mime.
+    lo_mime = cl_mime_repository_api=>get_api( ).
     lo_mime->get(
       EXPORTING i_url        = lv_url
       IMPORTING e_content    = lv_content
@@ -569,11 +581,11 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD read_long_text.
-    SELECT SINGLE description acceptance FROM zsa_demand_t
+    SELECT SINGLE description, acceptance FROM zsa_demand_t
       INTO (@ev_description, @ev_acceptance)
       WHERE demand_id = @iv_demand_id AND lang = @sy-langu.
     IF sy-subrc <> 0.
-      SELECT SINGLE description acceptance FROM zsa_demand_t
+      SELECT SINGLE description, acceptance FROM zsa_demand_t
         INTO (@ev_description, @ev_acceptance)
         WHERE demand_id = @iv_demand_id.
     ENDIF.
@@ -588,17 +600,21 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
     ELSE.
       lv_seq = CONV i( lv_value ) + 1.
     ENDIF.
-    MODIFY zsa_cfg FROM VALUE zsa_cfg( client = sy-mandt cfg_key = c_key
-                                       cfg_value = CONV string( lv_seq )
-                                       changed_at = zcl_zsa_json=>now_tstmp( ) ).
+    DATA ls_cfg TYPE zsa_cfg.
+    ls_cfg = VALUE zsa_cfg( mandt      = sy-mandt
+                            cfg_key    = c_key
+                            cfg_value  = CONV string( lv_seq )
+                            changed_at = zcl_zsa_json=>now_tstmp( ) ).
+    MODIFY zsa_cfg FROM ls_cfg.
     rv_no = `R-` && lv_seq.
   ENDMETHOD.
 
   METHOD enqueue_event.
     DATA lv_now TYPE timestampl.
     lv_now = zcl_zsa_json=>now_tstmp( ).
-    INSERT zsa_event_out FROM VALUE zsa_event_out(
-      client     = sy-mandt
+    DATA ls_event TYPE zsa_event_out.
+    ls_event = VALUE zsa_event_out(
+      mandt      = sy-mandt
       event_id   = cl_system_uuid=>create_uuid_c32_static( )
       type       = iv_type
       demand_id  = iv_demand_id
@@ -608,6 +624,7 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
       next_at    = lv_now
       created_at = lv_now
       changed_at = lv_now ).
+    INSERT zsa_event_out FROM ls_event.
   ENDMETHOD.
 
   METHOD artifacts_json.

@@ -4,7 +4,7 @@ CLASS ltc_zsa_event_push DEFINITION FOR TESTING
   PRIVATE SECTION.
     METHODS backoff_sequence FOR TESTING.
     METHODS signature_format FOR TESTING.
-    METHODS signature_matches_documented_rule FOR TESTING.
+    METHODS signature_rule FOR TESTING.
 ENDCLASS.
 
 CLASS ltc_zsa_event_push IMPLEMENTATION.
@@ -25,7 +25,7 @@ CLASS ltc_zsa_event_push IMPLEMENTATION.
     DATA(lv_sig) = zcl_zsa_event_push=>signature_hex(
       iv_secret = `test-secret`
       iv_body   = `{"eventId":"abc","data":{"type":"demand.submitted"}}` ).
-    cl_abap_unit_assert=>assert_char_cp( act = lv_sig exp = `sha256:*`
+    cl_abap_unit_assert=>assert_char_cp( act = lv_sig exp = `sha256=*`
                                         msg = `signature carries the documented prefix` ).
     cl_abap_unit_assert=>assert_equals( act = strlen( lv_sig ) exp = 71
                                         msg = `sha256= + 64 hex chars` ).
@@ -43,7 +43,7 @@ CLASS ltc_zsa_event_push IMPLEMENTATION.
     cl_abap_unit_assert=>assert_true( act = lv_is_lower_hex msg = `hex digest is lowercase` ).
   ENDMETHOD.
 
-  METHOD signature_matches_documented_rule.
+  METHOD signature_rule.
     " HMAC-SHA256 of the exact body bytes; the control plane verifies the same
     " rule with node:crypto (packages/sap-adapter/src/signature.ts).
     DATA(lv_sig) = zcl_zsa_event_push=>signature_hex( iv_secret = `secret` iv_body = `{}` ).

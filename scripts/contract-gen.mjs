@@ -117,6 +117,41 @@ const examples = {
       detailRef: 'https://jira.example.com/browse/JIRA-1234',
     },
   },
+  // --- S5: SAP-batch AI executor (docs/003 §4.8) ---
+  'sap-ai-job.json': {
+    id: '01J8ZQ9W3K5M2V7X4C6B8N0P1Q',
+    stageRunId: '01J8ZQ9W3K5M2V7X4C6B8N0P1R',
+    demandId: '4a3f9c2e7b1d48f0a6c5e2d9b8f7a1c3',
+    attempt: 1,
+    stageKey: 'requirement_analysis',
+    state: 'queued',
+    payload: {
+      stageRunId: '01J8ZQ9W3K5M2V7X4C6B8N0P1R',
+      demandId: '4a3f9c2e7b1d48f0a6c5e2d9b8f7a1c3',
+      stageKey: 'requirement_analysis',
+      stageName: '需求分析',
+      attempt: 1,
+      promptVersion: 'requirement-analysis/v1',
+      systemPrompt: '你是 SAP 研发交付流程中的结构化文档助手。只输出符合要求的单个 JSON 对象。',
+      prompt: '# 需求分析\\n请按模板要求输出 JSON。',
+      model: 'gateway-model',
+      outputSchema: 'requirement_analysis',
+      timeoutMs: 120000,
+    },
+    claimId: null,
+    leaseExpiresAt: null,
+    result: null,
+    lastError: null,
+    createdAt: '2026-11-05T12:00:00.000Z',
+    updatedAt: '2026-11-05T12:00:00.000Z',
+  },
+  'sap-ai-job-result-body.json': {
+    claimId: 'CLAIM-01J8ZQ9W3K5M2V7X4C6B8N0P1S',
+    status: 'succeeded',
+    outputText: '{"summary":"示例模型原始输出"}',
+    usage: { promptTokens: 812, completionTokens: 240, totalTokens: 1052, model: 'gateway-model' },
+    durationMs: 2340,
+  },
 };
 
 // The committed examples must validate against the schemas they illustrate.
@@ -128,6 +163,9 @@ const EXAMPLE_SCHEMA_MAP = {
   'claim-task-response.json': 'claim-task-response',
   'hook-envelope.json': 'hook-envelope',
   'hook-receipt-body.json': 'hook-receipt-body',
+  // --- S5: SAP-batch AI executor ---
+  'sap-ai-job.json': 'sap-ai-job',
+  'sap-ai-job-result-body.json': 'sap-ai-job-result-body',
 };
 
 const REQUIRED_OPENAPI_PATHS = [
@@ -154,6 +192,12 @@ const REQUIRED_OPENAPI_PATHS = [
   '/hooks',
   '/hooks/{id}/replay',
   '/hooks/{target}/receipt',
+  // --- S5: SAP-batch AI executor surface (HMAC, docs/003 §4.8) ---
+  '/sap/ai-jobs/next',
+  '/sap/ai-jobs/{id}/claim',
+  '/sap/ai-jobs/{id}/heartbeat',
+  '/sap/ai-jobs/{id}/result',
+  '/admin/sap/ai-jobs/{id}/requeue',
 ];
 
 const failures = [];

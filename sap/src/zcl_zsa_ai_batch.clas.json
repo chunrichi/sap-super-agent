@@ -1,0 +1,7 @@
+{
+  "formatVersion": "1",
+  "header": {
+    "description": "ZSA AI batch executor (control plane jobs -> AI gateway)",
+    "originalLanguage": "en"
+  }
+}

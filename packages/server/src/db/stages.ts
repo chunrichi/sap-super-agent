@@ -128,6 +128,38 @@ export function recoverRunningServerAiStages(db: DatabaseSync): number {
   return Number(result.changes);
 }
 
+// --- S5: per-run recovery so SAP-delegated running stages are not reset ---
+
+/** Running `server-ai` stage runs (restart recovery must inspect each one). */
+export function listRunningServerAiStageRuns(db: DatabaseSync): StageRun[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM stage_runs
+       WHERE status = 'running' AND executor_kind = 'server-ai'
+       ORDER BY created_at ASC, id ASC`,
+    )
+    .all() as unknown as StageRunRow[];
+  return rows.map(rowToStageRun);
+}
+
+/**
+ * Reset one interrupted `running` run back to `ready` (the H0–S4 restart
+ * behaviour) without touching SAP-delegated runs that keep their job.
+ */
+export function resetRunningServerAiStage(
+  db: DatabaseSync,
+  stageRunId: string,
+  nowIso: string,
+): boolean {
+  const result = db
+    .prepare(
+      `UPDATE stage_runs SET status = 'ready', started_at = NULL, finished_at = NULL, updated_at = ?
+       WHERE id = ? AND status = 'running'`,
+    )
+    .run(nowIso, stageRunId);
+  return Number(result.changes) > 0;
+}
+
 export function insertStageAttempt(db: DatabaseSync, attempt: StageAttempt): void {
   db.prepare(
     `INSERT INTO stage_attempts (

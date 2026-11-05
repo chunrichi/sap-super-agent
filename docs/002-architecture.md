@@ -33,7 +33,7 @@ flowchart LR
 
 - **需求平面（SAP）**：需求、审批、业务数据的记录系统。只承载业务对象与其生命周期，不保存执行态。
 - **控制平面**：唯一的执行态记录系统。负责把需求编排成阶段、生成或派发任务、记录工件与事件、执行门禁、对接外部系统。可移植：同一份领域核心可以跑在三种宿主里。
-- **执行平面**：真正干活的地方。v1 有两种执行器：服务端 AI（结构化生成，离线可跑）与 VSCode 客户端（需要在线的人机协作开发）。
+- **执行平面**：真正干活的地方。v1 有两种执行器：服务端 AI（结构化生成，离线可跑）与 VSCode 客户端（需要在线的人机协作开发）。M3（S5）把 `server-ai` 阶段改为由 SAP 侧批处理执行器执行（SAP 调企业 AI 网关，控制平面仍负责 prompt/校验/门禁），拓扑与部署见 [010-m3-deployment.md](010-m3-deployment.md)。
 
 三者的边界用 ID 关联，不互相写真相：SAP 的 `DEMAND_ID` 是业务主键；控制平面的 `stageRun`/`task`/`assignment` 挂在它下面；VSCode 本地只认 `task` 与工作区绑定。
 
@@ -45,9 +45,9 @@ flowchart LR
 | **M2 独立服务** | Docker Compose 或单二进制服务：API/WS、调度器、AI runner、Hook worker；可选 Web 运维页 | Postgres | 团队日常使用（推荐默认） | 需要一台常开机器/容器平台；多一套部署运维 |
 | **M3 SAP 内批处理（不是主进程）** | SAP 承载需求系统、审批、审计与**批处理式**服务端 AI 阶段；交互编排仍由一个轻量服务运行（可与 SAP 同网段部署） | SAP 表 + 轻服务本地库 | 强监管/数据不出 SAP、已有 SAP 运维体系 | ABAP 不实现完整 agent 主循环；SAP 侧只做"记录 + 审批 + 批处理 AI" |
 
-**建议**：默认 M2；M1 用于本地开发与演示；M3 定位为"SAP 内可控的批处理编排"，不要承诺"连交互式编码 agent 也跑在 ABAP 里"。M3 的判据与边界见 [004-sap.md](004-sap.md) 第 5 节。
+**建议**：默认 M2；M1 用于本地开发与演示；M3 定位为"SAP 内可控的批处理编排"，不要承诺"连交互式编码 agent 也跑在 ABAP 里"。M3 的判据与边界见 [004-sap.md](004-sap.md) 第 5 节；部署、网络、密钥与 runbook 见 [010-m3-deployment.md](010-m3-deployment.md)。
 
-同一份 `@sap-superagent/core` 通过宿主适配器运行在 M1 本地进程或 M2 独立服务里；M3 的 ABAP 侧**不运行 core**，只通过 ICF JSON/HTTPS 与轻服务交互，或用 bgRFC 承担批处理 AI 阶段。
+同一份 `@sap-superagent/core` 通过宿主适配器运行在 M1 本地进程或 M2 独立服务里；M3 的 ABAP 侧**不运行 core**，只通过 ICF JSON/HTTPS 与轻服务交互；批处理 AI 阶段默认由 SM36 周期 job 调度（bgRFC 为 Phase B 可选通道）。
 
 ## 3. 包与职责
 
@@ -148,14 +148,14 @@ Gate 是模板里的规则（无状态）；Approval 是门禁实例（`pending 
 | S2 SAP | DDIC + ICF JSON + MIME Web + 事件 webhook + 回写 | SAP 里提交需求 5 分钟内出现在控制平面 |
 | S3 多人在线 | presence、lease 回收、资格匹配、转交 | 断网/关机后任务自动回池；他人可接手 |
 | S4 Hook | JIRA / CHARM / Confluence / Teams 契约 + 一个示例适配器 | 出站事件可重放、幂等 |
-| S5 SAP 宿主 | bgRFC 批处理 AI 阶段 + SAP 内审批 | 无开发者在线时，需求分析/测试文档仍能生成 |
+| S5 SAP 宿主 | SAP 批处理 AI 阶段（SM36 周期 job 默认、bgRFC Phase B 可选）+ SAP 内审批 | 无开发者在线时，需求分析/测试文档仍能生成；M3 部署见 [010](010-m3-deployment.md) |
 
 ## 7. 非功能基线
 
-- **安全**：客户端只持有自己的 executor token；服务端 AI 密钥不出服务端；SAP webhook 用 HMAC + 时间戳；所有跨端调用 TLS。
+- **安全**：客户端只持有自己的 executor token；服务端 AI 密钥不出服务端；SAP webhook 用 HMAC + 时间戳；所有跨端调用 TLS。M3 下企业 AI 网关 key 只在 SAP 安全存储（`ZSA_CFG.AI_KEY_REF` 只存引用名），控制平面不持有；prompt/输出只在"控制平面 → SAP → 内网网关"路径传输，SAP 与控制平面日志不落正文。
 - **凭据可用不可见**：控制平面不持有开发者的 SAP/SSO 凭据，模型上下文不含凭据；扩展在本地作用域调用 `abap-cli`、git 等有权动作，只回传结果摘要。控制平面被攻破或提示注入不能直接接管开发者机器。
 - **能力降级**：Copilot 是否可用、extension tools 是否被企业策略禁用，启动时探测；不可用时扩展退化为"任务客户端 + 本地 abap-cli"，主流程不断。
-- **可观测**：每个状态变化写不可变事件；`/healthz`、队列深度、租约回收数、AI 成本按天统计。
-- **性能目标**：派发延迟 ≤2s（在线客户端）；presence 过期 60s；单控制平面 100 并发任务、10k 事件/天起步。
+- **可观测**：每个状态变化写不可变事件；`/healthz`、队列深度、租约回收数、AI 成本按天统计。M3 的 job 队列计数、`lastError` 与 `stage.ai_job.*` 事件见 [010 §8](010-m3-deployment.md#8-运行手册runbook)。
+- **性能目标**：派发延迟 ≤2s（在线客户端）；presence 过期 60s；单控制平面 100 并发任务、10k 事件/天起步。M3 的控制平面是单节点轻服务（SQLite + 本地工件目录），不做水平扩展；批处理 job 的领取延迟由 SM36 周期决定（建议 1 分钟）。
 - **可恢复**：M2 重启后任务/租约/工件不丢；WS 断线重连后按游标补齐事件。
 - **可测试**：core 为纯函数 + 内存仓库单测；协议有 schema 快照；端到端用本地模式跑；失败场景矩阵见 [009-testing.md](009-testing.md)。

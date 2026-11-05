@@ -248,6 +248,7 @@ Assignment 状态：`active → completed | released | expired`。
 | 服务端→客户端 | `artifact.stale` / `demand.updated` | 上游新版本使下游工件 stale、需求状态变化 |
 | 服务端→客户端 | `hook.attempted` / `hook.delivered` / `hook.dead` / `hook.cancelled` | 通用 Hook 的一次投递尝试失败、投递成功、进入死信、取消（持久事件，`subject.type=hook`，`subject.id=<hookId>`；`GET /hooks` 读 outbox 与这些事件） |
 | 服务端→客户端 | `hook.receipt` | 外部系统入站回执落库（持久事件，`subject.type=hook`；见 §4.7） |
+| 服务端→客户端 | `stage.ai_job.queued` / `stage.ai_job.claimed` / `stage.ai_job.completed` / `stage.ai_job.failed` | S5/M3：SAP 批处理 AI job 入队/领取/完成/失败（持久事件，`subject.type=stage_run`；见 §4.8） |
 | 服务端→客户端 | `server.ping` | 保活与时钟校准 |
 | 客户端→服务端 | `client.pong` / `client.ack {seq}` | 保活与游标确认 |
 
@@ -319,6 +320,99 @@ Hook 是控制平面对外部系统的唯一扩展入口（契约见 [008-hooks.
 - 回执落 `hook_receipts`（迁移 v6，只追加）+ `hook.receipt` 事件；v1 **只记录不推进阶段**，`advanceOnReceipt=true` 在启动时报"改成 false 或等待 v1.1"。
 
 对账：`pnpm hooks:reconcile` 只读；报告两类差异（外部有、控制平面无；控制平面有、外部无 = delivered 超 SLA 无回执 / 死信 / 未知回执），有差异默认退出码 0、`--fail-on-diff` 时 3。
+
+### 4.8 SAP 批处理 AI 执行器（M3，S5）
+
+M3 下控制平面可以把模板中的 `server-ai` 阶段**委派**给 SAP 侧批处理执行器（`ZCL_ZSA_AI_BATCH`）：控制平面仍独占状态机、输出校验、checklist、ledger、工件与门禁/审批推进；SAP 只做"取 prompt → 调企业 AI 网关 → 回传模型原始输出文本"。prompt 由控制平面渲染（`renderAiStageMessages`），ABAP **不拼 prompt、不做 JSON 提取/业务校验**，从而 prompt 与校验单源。
+
+**默认关闭**：`SA_SAP_AI_BATCH` 未设置/`0` 时 H0–S4 行为完全不变（本地 `ctx.aiProvider` 执行，SAP job API 不注册、404）。
+
+#### 4.8.1 启用与配置（控制平面 env）
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `SA_SAP_AI_BATCH` | 关闭 | `1`/`true` 启用；`0`/`false`/未设置关闭；其他值启动失败并给出改法 |
+| `SA_SAP_AI_STAGE_KEYS` | 全部 `server-ai` 阶段 | 逗号白名单；只委派命中的 stage key（按模板阶段 key） |
+| `SA_SAP_AI_JOB_LEASE_MS` | `600000`（10min） | claim 租约；heartbeat 续租，建议每租约一半续一次 |
+| `SA_SAP_AI_JOB_MAX_AGE_MS` | `1800000`（30min） | job 超龄终态；按阶段失败处理（重试/转人工） |
+| `SA_SAP_AI_JOB_BATCH_SIZE` | `5` | `next` 默认/最大批次（上限 50） |
+| `SA_SAP_AI_JOB_TIMEOUT_MS` | `120000` | 写入 payload 的单次网关调用超时提示 |
+| `SA_SAP_AI_JOB_MAX_LEASE_EXPIRIES` | `2` | 同一 job 第 N 次租约过期即按失败处理 |
+| `SA_SAP_HOOK_SECRET` | — | **必需**（启用时）；SAP→控制平面 HMAC 复用该 secret，缺失则启动失败 |
+| `SA_AI_MODEL` | provider 默认 | 写入 payload 的模型（SAP 可用 `ZSA_CFG.AI_GATEWAY_MODEL` 兜底） |
+
+#### 4.8.2 job 生命周期与租约
+
+```text
+queued ──claim──> claimed ──result(succeeded)──> succeeded
+   ^                  ├────result(failed)──────> failed
+   │                  ├────maxAge/多次过期─────> expired
+   └──lease expired───┘（不增 attempt）
+queued/claimed ──阶段或需求取消──> cancelled
+```
+
+- **身份**：`(stageRunId, attempt)` 唯一 → 一个 attempt 一个 job；阶段重试产生新 attempt，也就产生新 job。旧 job 保留为审计记录。
+- **queued**：可被 `next` 列出；`created_at` 升序返回。
+- **claimed**：带 `claimId`（服务端 ULID）与租约；租约有效期内重复 claim → `409`。
+- **租约过期**：sweeper 把 `claimed` 且租约过期的 job 放回 `queued`（`claimId/lease` 清空，**不增 attempt**），lease 过期计数 +1；计数达到 `SA_SAP_AI_JOB_MAX_LEASE_EXPIRIES` → 按阶段失败处理（`expired` + `stage.ai_job.failed`）。
+- **超龄**：`now - created_at > SA_SAP_AI_JOB_MAX_AGE_MS` 的未终态 job → `expired` + 按阶段失败处理。
+- **结果幂等**：job 已 `succeeded`/`failed`/`expired`/`cancelled` 时重复 result 返回 `200 {duplicate:true, accepted:false}`（不重复写事件/工件/attempt ledger）；`queued` 状态发 result → `409`；claimId 不匹配 → `409`；阶段已不在同一 attempt 的 `running`（已推进/取消）→ job 置 `cancelled` 并返回 `200 {accepted:false, duplicate:false}`，SAP 应停止重试。
+- **取消**：阶段或需求被取消后，sweeper 把该 attempt 的未终态 job 置 `cancelled`（终态、审计）。
+
+#### 4.8.3 job payload（数据边界）
+
+| 字段 | 说明 |
+| --- | --- |
+| `stageRunId` / `demandId` / `stageKey` / `stageName` / `attempt` | 身份与展示 |
+| `promptVersion` | prompt 版本（进 ledger） |
+| `systemPrompt` / `prompt` | 控制平面渲染的 system/user 文本；SAP 原样发给网关 |
+| `model` | 控制平面钉住的模型（SAP 可被 `ZSA_CFG` 覆盖） |
+| `outputSchema` | 控制平面输出 schema 的不透明引用；**SAP 不解析** |
+| `timeoutMs` | 单次网关调用超时提示 |
+| `maxOutputTokens?` | 可选网关上限 |
+
+payload **不含**凭据、网关地址、SAP 地址；日志只打 ids/长度/耗时，不打印 prompt/output 正文。prompt/输出只在"控制平面 → SAP → 企业内网网关"路径传输。
+
+#### 4.8.4 SAP → 控制平面 API（HMAC，无 Bearer）
+
+全部 `POST` + `X-SA-Signature/Timestamp/Delivery`（复用 §4.1/§4.5 的 HMAC 规则，±5 分钟，secret=`SA_SAP_HOOK_SECRET`）；鉴权失败 `401`。返回体均含 `serverTime`。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/v1/sap/ai-jobs/next` | body `{limit?}` → `{jobs:[...], serverTime}`；只读，不改状态 |
+| POST | `/api/v1/sap/ai-jobs/{id}/claim` | body `{}` → `{job, claimId, lease:{expiresAt,renewIntervalMs}, serverTime}`；租约有效期内重复 claim → `409` |
+| POST | `/api/v1/sap/ai-jobs/{id}/heartbeat` | body `{claimId}` → `{jobId, claimId, lease, serverTime}`；claim 不匹配/租约已过期/已终态 → `409` |
+| POST | `/api/v1/sap/ai-jobs/{id}/result` | body `{claimId, status:"succeeded", outputText, usage?, durationMs?}` 或 `{claimId, status:"failed", error:{code?,message,retryable?}, usage?, durationMs?}` → `{job, accepted, duplicate, stageRunId, stageStatus, serverTime}` |
+| POST | `/api/v1/admin/sap/ai-jobs/{id}/requeue` | **admin Bearer**；body `{reason?}`；把 `failed`/`expired`/`cancelled` 且阶段仍 `running`（同一 attempt）的 job 重新排入 `queued`；已 `queued` → `requeued:false` 幂等；`claimed` 或阶段已推进 → `409` |
+| GET | `/hooks/sap/status` | 现有响应**追加** `aiJobs:{queued,claimed,succeeded,failed,expired,cancelled,lastError}`（仅启用时出现；admin Bearer） |
+
+result 的成功路径（控制平面）：提取 JSON（`extractJsonText`）→ 输出 schema（`parseStageOutput`）→ checklist（`evaluateStageCompletion`）→ attempt ledger → 工件 + 门禁/推进（复用 §2.2 的完成语义，与本地 AI 阶段同一份实现）。**非法输出/schema 失败按阶段失败处理**（重试到 `maxAttempts` → `waiting_human`，不落半成品工件），并写 `stage.ai_job.failed`。
+
+#### 4.8.5 事件（持久，`subject.type=stage_run`）
+
+| type | data 关键字段 | 何时 |
+| --- | --- | --- |
+| `stage.ai_job.queued` | `jobId, stageRunId, demandId, stageKey, attempt, reason`（`dispatch`/`retry`/`lease_expired`/`recovered`/`requeued`） | 入队、租约过期回队、重启恢复、admin requeue |
+| `stage.ai_job.claimed` | `jobId, stageRunId, demandId, stageKey, attempt, claimId, leaseExpiresAt` | SAP claim 成功 |
+| `stage.ai_job.completed` | `jobId, stageRunId, demandId, stageKey, attempt, artifactId, artifactVersion, stageStatus, tokens, durationMs` | 结果被接受并完成/转门禁 |
+| `stage.ai_job.failed` | `jobId, stageRunId, demandId, stageKey, attempt, reason, error, willRetry, stageStatus`（`reason`: `sap_failed`/`invalid_output`/`checklist_failed`/`max_age_exceeded`/`lease_expired`/`stage_cancelled`） | 结果失败/非法输出/超龄/多次过期/取消 |
+
+#### 4.8.6 控制平面执行语义（StageRunner）
+
+- 阶段 `ready` 且命中委派：沿用现有 stage claim（`running` + `stage.started`），随后**不调用本地 `ctx.aiProvider`**；渲染 prompt 并写 job `queued` + `stage.ai_job.queued`，阶段保持 `running` 等结果。
+- 结果成功：公共完成函数（与本地 AI 阶段同一实现）→ 写 `stage.ai_job.completed`；阶段可落 `done` 或门禁 `waiting_human`。
+- 结果失败/输出非法：`failStageAttempt`（attempt+1 `ready` 或超限 `waiting_human`；不落半成品）→ 写 `stage.ai_job.failed`；重试的新 attempt 由 runner 在下一 tick 重新入队。
+- 租约过期/超龄：见 §4.8.2；SAP 端应 heartbeat 续租，超龄后由控制平面判定失败。
+- **重启恢复**：启动时 `claimed` 且租约过期 → `queued`（`recovered`）；`running` 且无 job 的被委派阶段 → 幂等补建（同 attempt）；非委派的 `running` server-ai 阶段保持 H0–S4 的 reset 行为。
+- **不委派/开关关闭**：与 H0–S4 完全一致（本地 provider）。
+- 成本记账：`model` 来自 payload，`tokens` 来自 SAP 回传 `usage`，`costUsd=0`（网关侧计费），`durationMs` 用 SAP 回传值或服务端计时；不伪造 Cost。
+
+#### 4.8.7 边界
+
+- SAP 只做批处理执行器 + 网关调用；不实现交互式 agent、流式输出、ABAP 全量控制平面。
+- SAP 不做 JSON 提取/schema/checklist/门禁判断；不做业务重试决策（只做网关层重试与 `failed` 回传）。
+- 不新增外部依赖（Node `fetch` / ABAP `cl_http_client`）；不改 `/hooks/sap` 入站行为与 SAP outbox push。
+- 数据边界：需求/工件/事件/日志不出企业；prompt/输出仅走控制平面→SAP→内网网关；控制平面不持有网关 key。
 
 ## 5. 工件与上下文
 

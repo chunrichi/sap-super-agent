@@ -7,6 +7,8 @@
 >
 > **状态（2026-11-05，Phase B 真机落地）**：测试系统上已创建并激活 6 张 DDIC 表、3 个类（含 ABAP Unit）、ICF 节点 `/sap/zsa`、MIME `/zsa/ui` 三个静态资源、后台 job 程序 `ZSA_OUTBOX_PUSH`；`abap validate:aff` 18/18、`pnpm sap:check` 离线/在线（`SA_SAP_CHECK_ONLINE=1`）全绿、ABAP Unit 6/6。
 > 端到端两条验收（SAP→控制平面 5 分钟入单、审批 1 分钟回写）与 ICF `/api/health` 200 仍需人工输入：控制平面可被测试系统访问（M2/内网隧道）、HMAC secret 注入方式、Basis SSO/服务账号。详见下文「验收结果与 blocked 项」。
+>
+> **状态（2026-11-05，S5 Phase A 离线）**：新增 S5/M3 批处理 AI 执行器对象 `ZCL_ZSA_AI_BATCH`（+ABAP Unit 源文件）与 `ZSA_AI_BATCH_RUN` / AFF 元数据；`pnpm sap:check` 离线绿（必需文件 29 个、`abap validate:aff` 20/20、`abap check content` 10 个 ABAP 文件）。**未连 SAP**：真机 `create/push/check syntax/activate/abap test`、`ZSA_CFG` 写入与 SM36 调度均属 Phase B（blocked，人工输入）。
 
 ## 目录
 
@@ -28,6 +30,8 @@ abap-cli `create`/`push` 消费：
 | `ZCL_ZSA_JSON` / `ZCL_ZSA_EVENT_PUSH` / `ZCL_ZSA_HTTP_HANDLER` | `zcl_zsa_*.clas.json` + `.clas.abap`（+ `.clas.testclasses.abap`） |
 | ICF/SICF 节点 `/sap/zsa`（SICF 节点名 `ZSA`，类型码 `HTTP`） | `zsa.http.json` |
 | 后台 job 程序 `ZSA_OUTBOX_PUSH` | `zsa_outbox_push.prog.json` + `.prog.abap` |
+| **S5/M3** 批处理 AI 执行器 `ZCL_ZSA_AI_BATCH`（+测试类） | `zcl_zsa_ai_batch.clas.json` + `.clas.abap` + `.clas.testclasses.abap` |
+| **S5/M3** AI job 入口 `ZSA_AI_BATCH_RUN` | `zsa_ai_batch_run.prog.json` + `.prog.abap` |
 | DDIC bootstrap（一次性，见下） | `zsa_ddic_bootstrap.prog.json` + `.prog.abap` |
 | MIME 前端 `/zsa/ui` | `ui/index.html`、`ui/app.js`、`ui/styles.css` |
 
@@ -137,6 +141,95 @@ abap run-report ZSA_DDIC_BOOTSTRAP --json
 6. **配置**：维护 `ZSA_CFG` 的 `CONTROL_PLANE_URL` 与 `HMAC_SECRET_REF`（只存引用，不存明文密钥）；
    HMAC secret 本身由 Basis 注入（见下文 blocked 项）。
 
+## S5 / M3：SAP 批处理 AI 执行器（`ZCL_ZSA_AI_BATCH`）
+
+控制平面把模板中的 `server-ai` 阶段渲染成 AI job，SAP 侧 `ZCL_ZSA_AI_BATCH` 拉取 job → claim →
+调企业 AI 网关（OpenAI 兼容）→ heartbeat 续租 → 回传**模型原始输出文本**；JSON 提取、输出 schema、
+checklist、ledger、工件与门禁全部留在控制平面。SAP 不拼 prompt、不做业务校验，从而 prompt 与校验单源。
+协议权威：[docs/003 §4.8](../docs/003-domain-and-protocol.md#48-sap-批处理-ai-执行器m3s5)；
+落地边界：[docs/004 §7.1](../docs/004-sap.md#71-m3-落地边界s5-实现口径)。
+
+| 对象 | 类型 | 文件 | 职责 |
+| --- | --- | --- | --- |
+| `ZCL_ZSA_AI_BATCH` | CLAS | `src/zcl_zsa_ai_batch.clas.json` + `.clas.abap` | 取 job / claim / 网关调用 / heartbeat / result 回传 / 错误分类 / BAL 日志 |
+| `ZCL_ZSA_AI_BATCH`（测试） | CLAS（testclasses） | `src/zcl_zsa_ai_batch.clas.testclasses.abap` | payload 映射、HMAC 向量、claim/result 幂等与 409 分支、网关超时/失败分类、租约续期 |
+| `ZSA_AI_BATCH_RUN` | PROG | `src/zsa_ai_batch_run.prog.json` + `.prog.abap` | SM36 周期 job 入口，调用 `run_batch( )` |
+
+### 协议与实现口径
+
+- **SAP → 控制平面**（全部 `POST` + `X-SA-Signature` / `X-SA-Timestamp` / `X-SA-Delivery`，复用
+  `SA_SAP_HOOK_SECRET` 的同一套 HMAC，不用 Bearer；时间戳 UTC ISO-8601；签名覆盖 raw body）：
+  - `POST {CONTROL_PLANE_URL}/api/v1/sap/ai-jobs/next` body `{"limit":N}` → `{jobs:[],serverTime}`（只读）；
+  - `POST .../{id}/claim` body `{}` → `{job,claimId,lease:{expiresAt,renewIntervalMs}}`；
+    租约有效期内重复 claim → **409**，本类跳过该 job（交给租约持有者）；
+  - `POST .../{id}/heartbeat` body `{claimId}`：批处理 work process 内网关调用是阻塞的，**没有并行
+    heartbeat 线程**，因此在"调用窗口可能跨越续租点"时先续租（用与 payload `timeoutMs`、`AI_TIMEOUT_MS`
+    取小后的有效超时估算窗口），调用返回后按需再续租；409 视为租约丢失，放弃该 job；
+  - `POST .../{id}/result`：
+    - 成功 `{claimId,status:"succeeded",outputText,usage,durationMs}`
+    - 失败 `{claimId,status:"failed",error:{code,message,retryable},durationMs}`
+    - `X-SA-Delivery` 对同一 claim 固定为 `zsa-ai-result-<claimId>`，网络重试时控制平面可幂等去重；
+      心跳/claim/next 用唯一交付键。result 409（claim 失效/已被处理）→ 停止重试。
+- **SAP → 企业 AI 网关**：`POST {AI_GATEWAY_URL}/chat/completions`（OpenAI 兼容），
+  `messages=[{"role":"system","content":payload.systemPrompt},{"role":"user","content":payload.prompt}]`，
+  `model` 用 `payload.model`（缺省回退 `ZSA_CFG-AI_GATEWAY_MODEL`），可选 `max_tokens` =
+  `payload.maxOutputTokens`；`Authorization: Bearer <key>`，key 由 `AI_KEY_REF` 指向的安全存储/配置条目解析，
+  **`ZSA_CFG` 只存引用名，不存明文**。网关 `choices[0].message.content` 原样回传（SAP 不做 JSON 提取）。
+- **错误分类**（详见 `classify_gateway_failure`）：
+  - 网关 4xx（400/422/401/403/404：key、model、请求配置错）→ 回传 `failed`（`retryable:false`）并写 BAL `E` 告警，
+    **不本地重试**；
+  - 429/5xx/传输失败/超时 → 本地最多 3 次（间隔 2s/5s，`WAIT UP TO`）后回传 `failed`（`retryable:true`），
+    由控制平面按 attempt 语义重试；transport error 文本含 timeout 时错误码为 `GATEWAY_TIMEOUT`，否则 `GATEWAY_TRANSPORT`；
+  - heartbeat/result 409 → 租约或 claim 已失效，放弃该 job（控制平面租约过期后重新排队/判定失败）。
+- **日志与数据边界**：BAL（SLG1）对象 `ZSA` / 子对象 `AI_BATCH`（SM37 作业日志可见），只写
+  jobId / stageKey / attempt / 输出长度 / 耗时 / 状态 / 错误码；**不写 prompt 与 output 正文**，
+  不写网关 key。SLG0 未配置时日志调用被静默跳过，不影响 job 完成。result 的 `outputText` 仅在
+  SAP→控制平面请求体内传输（属于协议数据，不进日志）。
+- **超时说明（Phase B 需 Basis 配置）**：本类调用 `cl_http_client` 时不设置客户端级 timeout API
+  （Phase A 无法在真机验证该方法；`ZCL_ZSA_EVENT_PUSH` 同样未设置）。实际网络超时应在 ICM/SM59
+  层配置（建议 ≤ 控制平面租约 10min）；`AI_TIMEOUT_MS` 用于计算有效网关超时（与 payload `timeoutMs`
+  取小）并驱动续租时机，超时在 SAP 侧被归类为 `GATEWAY_TIMEOUT`（retryable）。
+
+### `ZSA_CFG` 新键（S5；键值表，无 DDIC 结构变更）
+
+复用已有 `CONTROL_PLANE_URL`、`HMAC_SECRET_REF`（见上）；S5 新增/使用：
+
+| 键 | 必填 | 说明 |
+| --- | --- | --- |
+| `AI_GATEWAY_URL` | S5 启用时必填 | 企业 AI 网关基址（内网），代码追加 `/chat/completions`；若已含完整路径则不再追加 |
+| `AI_GATEWAY_MODEL` | payload 无 `model` 时必填 | 默认模型名（payload `model` 优先） |
+| `AI_KEY_REF` | 网关需要鉴权时 | 安全存储/配置**引用名**（Basis 应用密钥或 ZSA_CFG 中该名字下的条目）；代码解析后作为 Bearer，**不落明文** |
+| `AI_TIMEOUT_MS` | 否 | 单次网关调用超时上限（毫秒，与 payload `timeoutMs` 取小）；缺省 120000 |
+| `CONTROL_PLANE_URL` | 必填（复用） | 控制平面基址；代码追加 `/api/v1/sap/ai-jobs/...` |
+| `HMAC_SECRET_REF` | 必填（复用） | HMAC secret 的引用名，与 outbox 推送共用 |
+
+维护方式（Phase B，人工）：SE16 打开 `ZSA_CFG`，按 `MANDT / CFG_KEY / CFG_VALUE / CHANGED_AT` 插入键值
+（`CFG_VALUE` 只存地址/模型名/引用名/数字，不存密钥明文）；写后可用
+`abap select --table ZSA_CFG --fields CFG_KEY,CFG_VALUE --json` 核对。
+
+### Phase B：部署与启用（人工输入，当前 blocked）
+
+1. **对象创建/激活**（本地包 `$ZSA`，无 TR；先确认 `ZCL_ZSA_EVENT_PUSH` 已 active，本类复用其
+   public `signature_hex`）：
+
+   ```sh
+   abap create CLAS ZCL_ZSA_AI_BATCH --file sap/src/zcl_zsa_ai_batch.clas.json --package '$ZSA' --yes --no-pull
+   abap push sap/src/zcl_zsa_ai_batch.clas.abap --yes
+   abap push sap/src/zcl_zsa_ai_batch.clas.testclasses.abap --yes
+   abap create PROG ZSA_AI_BATCH_RUN --file sap/src/zsa_ai_batch_run.prog.json --package '$ZSA' --yes
+   abap push sap/src/zsa_ai_batch_run.prog.abap --yes
+   abap check syntax --all        # 只连测试系统
+   abap test ZCL_ZSA_AI_BATCH --json
+   ```
+2. **`ZSA_CFG`**：写入 `AI_GATEWAY_URL` / `AI_GATEWAY_MODEL` / `AI_KEY_REF` / `AI_TIMEOUT_MS`（见上），
+   并确认 `CONTROL_PLANE_URL`、`HMAC_SECRET_REF` 已按 H2 配置。
+3. **SLG0**（建议）：对象 `ZSA` / 子对象 `AI_BATCH`，供 SM37/SLG1 排查。
+4. **SM36**：作业名如 `ZSA_AI_BATCH_RUN`，程序 `ZSA_AI_BATCH_RUN`，周期建议 1–5 分钟；不要同一时间窗口
+   并行多实例（多实例语义安全：claim 409 会跳过，但会产生无效流量）。bgRFC 为 Phase B 可选通道，不阻塞。
+5. **验收**：控制平面 `SA_SAP_AI_BATCH=1`，无 executor 在线建 pdo Demand →
+   `stage.ai_job.*` 事件（queued/claimed/completed）、job 生命周期、`GET /hooks/sap/status` 的 `aiJobs` 计数；
+   再注入网关超时/非法输出，验证控制平面重试到 `waiting_human` 且 SAP 侧回传 `failed`（SAP 侧不落半成品）。
+
 ## ICF 路由
 
 同一节点提供 JSON API 与静态页面（docs/004 §3.2）：
@@ -175,12 +268,17 @@ abap run-report ZSA_DDIC_BOOTSTRAP --json
 
 - `ZCL_ZSA_EVENT_PUSH`：退避序列 1/5/30/300/1800、签名格式（`sha256=` + 64 位小写 hex）。
 - `ZCL_ZSA_HTTP_HANDLER`：路由分类、回写白名单、ISO⇄TIMESTAMPL 往返。
+- **`ZCL_ZSA_AI_BATCH`（S5）**：control plane next/claim JSON 映射（job payload）、OpenAI 兼容网关
+  request/response 映射、result succeeded/failed 报文体（prompt 不进入 failed 报文）、HMAC RFC 4231
+  已知向量与 `X-SA-*` 头构建、control plane 409/401/5xx 分类、网关 4xx/429/5xx/超时分类、
+  租约续期时间点、有效超时（`timeoutMs` 与 `AI_TIMEOUT_MS` 取小）、批次上限、result 交付键幂等。
 
-运行（实测 2026-11-05：两类的 3 个用例全部通过）：
+运行（前两类为 2026-11-05 真机实测 3/3；`ZCL_ZSA_AI_BATCH` 为 S5 Phase A 源文件，真机执行属 Phase B blocked）：
 
 ```sh
-abap test ZCL_ZSA_EVENT_PUSH --json     # 3 methods / 3 passed
-abap test ZCL_ZSA_HTTP_HANDLER --json   # 3 methods / 3 passed
+abap test ZCL_ZSA_EVENT_PUSH --json     # 3 methods / 3 passed（H2-B 实测）
+abap test ZCL_ZSA_HTTP_HANDLER --json   # 3 methods / 3 passed（H2-B 实测）
+abap test ZCL_ZSA_AI_BATCH --json       # S5 Phase B：15 methods（待真机）
 ```
 
 ## 验收结果与 blocked 项（Phase B）
@@ -204,6 +302,21 @@ abap test ZCL_ZSA_HTTP_HANDLER --json   # 3 methods / 3 passed
 7. **SM36 调度 job**：`ZSA_OUTBOX_PUSH` 程序已激活，作业定义需人工在测试系统 SM36（或 bgRFC）创建。
    **blocked（人工）**。
 
+S5/M3 新增（Phase A 只交付离线源文件；以下全部 **blocked**，需人工输入后才做 Phase B）：
+
+8. **SAP 侧对象部署**：`ZCL_ZSA_AI_BATCH` + testclasses、`ZSA_AI_BATCH_RUN` 的
+   `abap create/push/check syntax/activate/abap test`——本分支未连 SAP，只做了离线
+   `pnpm sap:check`（AFF 20/20、`abap check content` 10 文件）。**blocked（需测试系统 + Phase B 窗口）**。
+9. **控制平面可达 + HMAC secret 注入**：SAP job API 复用 H2-B 的控制平面可达与 `SA_SAP_HOOK_SECRET`
+   输入。**blocked（人工，同 H2-B）**。
+10. **企业 AI 网关**：`AI_GATEWAY_URL` / `AI_GATEWAY_MODEL` / key 与出口策略、SAP 安全存储注入方式
+    （`AI_KEY_REF` 的实际实现：Basis 应用密钥/SSF/自定义表）与网关 TLS 证书（STRUST）。**blocked（人工）**。
+11. **SM36 作业窗口与权限**：`ZSA_AI_BATCH_RUN` 周期作业（含 bgRFC 可选通道）需 Basis 创建与授权；
+    调度周期应小于控制平面租约（默认 10min）、与 `AI_TIMEOUT_MS`/ICM 超时协调。**blocked（人工）**。
+12. **端到端 M3 证据**：无 executor 在线时 SAP job 驱动 `intake/requirement_analysis/test_doc` 阶段、
+    SAP 内审批推进、网关超时/非法输出重试到 `waiting_human`——需 9/10/11 全部就绪后由控制平面
+    `SA_SAP_AI_BATCH=1` 驱动，SAP 侧提供 SM37 日志、`GET /hooks/sap/status` 与事件链证据。**blocked（人工）**。
+
 记录：对象清单、abap-cli 命令与输出（本地包无 TR，不记录 TR）、失败与修复见
 [handoffs/STATUS.md](../handoffs/STATUS.md) 的 H2-B 行与「H2 Phase B 偏差与遗留」。
 
@@ -219,10 +332,20 @@ abap test ZCL_ZSA_HTTP_HANDLER --json   # 3 methods / 3 passed
   对象存在性以 `TADIR` / `DD02L` / `abap pull` 为准。
 - **ICF 节点名**：SICF 节点名是路径叶子 `ZSA`（服务路径 `/sap/zsa`），不是文档早期写的 `ZSA_API`；
   AFF 文件名因此是 `zsa.http.json`。
+- **S5 网关超时**：`ZCL_ZSA_AI_BATCH` 未在代码里调用 `cl_http_client` 客户端级 timeout API
+  （Phase A 无真机，不引入未验证 API）；网络超时需 Phase B 在 ICM/SM59 配置（建议 ≤ 控制平面租约）。
+  `AI_TIMEOUT_MS` 只用于计算有效网关超时与续租时机；超时/传输失败会以 `GATEWAY_TIMEOUT` /
+  `GATEWAY_TRANSPORT`（`retryable:true`）回传。
+- **S5 BAL 日志对象**：应用日志对象 `ZSA` / 子对象 `AI_BATCH` 需 SLG0 配置；未配置时记录调用被
+  静默跳过（job 不失败），SM37 仍能看到程序 `WRITE` 的汇总行。
+- **S5 真机语法/单测未跑**：`ZCL_ZSA_AI_BATCH` 的 `cl_http_client`、`BAL_*` 函数与 `/ui2/cl_json`
+  snake_case 反序列化只经过离线 `abap check content`（结构级，不做 API/语法检查），
+  Phase B 首次 `abap check syntax` / `abap test` 是必须的 gate。
 
 ## 本地离线校验
 
 ```sh
 pnpm sap:check                          # 离线：结构检查 + abap validate:aff + abap check content
-SA_SAP_CHECK_ONLINE=1 pnpm sap:check    # 有测试系统时额外跑 abap check syntax（本轮实测全绿）
+                                        # S5 后：必需文件 29 个、AFF 20/20、10 个 ABAP 文件
+SA_SAP_CHECK_ONLINE=1 pnpm sap:check    # 有测试系统时额外跑 abap check syntax（H2-B 实测全绿，S5 待 Phase B）
 ```

@@ -11,7 +11,7 @@
 | 集成 | `server` + SQLite + 假 SAP / 假 LLM / 假执行器；REST + WS 生命周期 | vitest + supertest/ws | 每次提交 |
 | 端到端 | M1 本地模式全链路：建需求 → AI 阶段 → 门禁 → 客户端领取 → 工件 → 完成 | 脚本（`pnpm e2e`）+ 假执行器 | 每次提交 |
 | 客户端 | VSCode 扩展：任务箱、claim/续约、上下文包、工具函数（mock `vscode` API） | vitest + `@vscode/test-electron` | 每次提交；VSIX 冒烟在发布前 |
-| SAP 侧 | ABAP Unit（outbox 选取/退避、HMAC、字段映射、审批状态机）；`abap check syntax` | abap-cli + 测试系统 | 手动工作流（不连生产） |
+| SAP 侧 | ABAP Unit（outbox 选取/退避、HMAC、字段映射、审批状态机、AI batch 的 JSON 映射/claim/result/超时分类）；`abap check syntax` | abap-cli + 测试系统 | 手动工作流（不连生产） |
 | AI 质量 | golden set 回归：checklist 通过率、人工修改率、引用完整性 | 离线评测脚本 | 每周 / prompt 变更时 |
 
 ## 2. 失败场景矩阵（必须覆盖）
@@ -34,6 +34,8 @@
 | 14 | 审批超时 / 撤销 | 集成 | Approval 转 `expired`/`withdrawn`；StageRun 不卡死 |
 | 15 | 服务端 AI 超时 / 输出不合 schema | 集成 | 重试到上限转人工；不产生半成品工件；成本记账 |
 | 16 | 需求未绑定仓库 / 用户账号映射变化 | 集成 + 客户端 | 未绑定任务进入通用任务箱；绑定任务只对匹配工作区可见；映射变化后可见性正确刷新 |
+| 17 | SAP 批处理 job 重复 claim / 重复 result（S5/M3） | 集成 + e2e | 第二个 claim 返回 409；重复 result 幂等（只完成一次、只写一条 `stage.ai_job.completed`、只有一条 attempt ledger、不重复工件） |
+| 18 | SAP 批处理 job 租约过期 / 超龄 / 网关失败（S5/M3） | 集成 + e2e | 租约过期回 `queued`（不增 attempt）；多次过期/超龄按阶段失败（重试到 `maxAttempts` → `waiting_human`）；网关失败/非法输出不产生半成品工件；启用时本地 provider 调用次数为 0 |
 
 ## 3. AI 输出质量评测
 
@@ -47,17 +49,21 @@
 
 ```sh
 pnpm check        # typecheck + lint + unit + contract
-pnpm e2e          # 本地模式全链路
-pnpm contract:gen # 生成 openapi/json-schema 并检查 diff
+pnpm e2e          # 进程内全链路（含 SAP 宿主批处理 AI，见 §2 #17/#18）
+pnpm build        # 所有包按依赖拓扑序构建
+pnpm sap:check    # SAP AFF 离线校验（CI 不连 SAP；在线 check syntax 手动）
+pnpm contract:gen # 生成 openapi/json-schema 并检查 diff（S5 后为 59 schemas / 9 examples / 27 routes）
 ```
 
 - PR 必须通过上述命令；协议变更必须附 `contracts/` diff 与迁移说明。
 - 客户端改动额外跑 `pnpm --filter vscode test`；发布前构建 VSIX 并冒烟安装。
-- SAP 改动走手动 `abap-check` 工作流：连接测试系统，`check syntax` + ABAP Unit；**永不连生产**。
+- SAP 改动走 `pnpm sap:check` 离线门禁（`abap validate:aff` + `abap check content`）+ 手动 `abap-check` 工作流：连接测试系统，`check syntax` + ABAP Unit；**永不连生产**。
+- M3 部署文档（[010](010-m3-deployment.md)）的验收 checklist 在 Phase B 真机上执行，证据记录到 `handoffs/STATUS.md`。
 - 文档改动跑本地链接检查（脚本在 `scripts/`）。
 
 ## 5. 测试数据与环境
 
 - 所有夹具使用虚构需求、虚构仓库名、虚构 SAP 对象；禁止使用真实客户数据。
 - 假 SAP 适配器实现 ICF JSON 最小子集（需求/审批/回写），支持故障注入（超时/409/401）；假 LLM 返回固定 JSON，用于 e2e 与成本测试。
+- M3（S5）用 `FakeSapAiBatch`（进程内模拟 SAP 批处理执行器，HMAC 调 job API）与 `FakeAiGateway`（OpenAI 兼容响应 + 超时/5xx/429/坏 JSON 注入）；**测试不依赖真实 SAP 系统或真实 AI 网关**。
 - 集成测试默认 SQLite 内存库；Postgres 相关用例在 CI 单独矩阵（M2）。

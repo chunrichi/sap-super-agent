@@ -7,6 +7,8 @@ import {
   DEFAULT_PRESENCE_TTL_MS,
   IDEMPOTENCY_TTL_MS,
 } from '@sap-superagent/protocol';
+// --- S5: SAP batch AI executor config (docs/003 §4.8.1) ---
+import { resolveSapAiBatchConfig } from './sap-ai/config.js';
 import type { ServerConfig, ServerOptions } from './types.js';
 
 const DEFAULT_HOST = '127.0.0.1';
@@ -132,5 +134,7 @@ export function resolveConfig(options: ServerOptions): ServerConfig {
       options.gateTimeoutMs === undefined
         ? null
         : positiveInt(options.gateTimeoutMs, 0, 'gateTimeoutMs'),
+    // --- S5: SAP batch AI executor (disabled unless SA_SAP_AI_BATCH=1) ---
+    sapAi: resolveSapAiBatchConfig(env, options.sapAiBatch ?? {}),
   };
 }

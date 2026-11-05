@@ -62,6 +62,25 @@ export const APPROVAL_STATES = ['pending', 'approved', 'rejected', 'withdrawn', 
 export const approvalStateSchema = z.enum(APPROVAL_STATES);
 export type ApprovalState = z.infer<typeof approvalStateSchema>;
 
+// --- S5: SAP-batch AI job lifecycle (docs/003 §4.8) ---
+// `queued -> claimed -> succeeded | failed`; `expired` fails an attempt after
+// max age or repeated lease expiry; `cancelled` follows a cancelled stage.
+export const SAP_AI_JOB_STATES = [
+  'queued',
+  'claimed',
+  'succeeded',
+  'failed',
+  'expired',
+  'cancelled',
+] as const;
+export const sapAiJobStateSchema = z.enum(SAP_AI_JOB_STATES);
+export type SapAiJobState = z.infer<typeof sapAiJobStateSchema>;
+
+/** Terminal SAP-side outcome reported to `POST /sap/ai-jobs/{id}/result`. */
+export const SAP_AI_JOB_RESULT_STATUSES = ['succeeded', 'failed'] as const;
+export const sapAiJobResultStatusSchema = z.enum(SAP_AI_JOB_RESULT_STATUSES);
+export type SapAiJobResultStatus = z.infer<typeof sapAiJobResultStatusSchema>;
+
 export const EXECUTOR_KINDS = ['vscode', 'server-ai'] as const;
 export const executorKindSchema = z.enum(EXECUTOR_KINDS);
 export type ExecutorKind = z.infer<typeof executorKindSchema>;
@@ -196,6 +215,11 @@ export const EVENT_TYPES = [
   'approval.withdrawn',
   'executor.registered',
   'executor.offline',
+  // --- S5: SAP-batch AI job audit events (docs/003 §4.4/§4.8) ---
+  'stage.ai_job.queued',
+  'stage.ai_job.claimed',
+  'stage.ai_job.completed',
+  'stage.ai_job.failed',
   // --- S4: generic Hook delivery + inbound receipt events (docs/003 §4.7) ---
   'hook.attempted',
   'hook.delivered',

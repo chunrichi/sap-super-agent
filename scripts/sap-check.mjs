@@ -85,6 +85,12 @@ const requiredFiles = [
   'sap/src/zcl_zsa_http_handler.clas.json',
   'sap/src/zcl_zsa_http_handler.clas.abap',
   'sap/src/zcl_zsa_http_handler.clas.testclasses.abap',
+  // S5 / M3: SAP batch AI executor (docs/003 section 4.8).
+  'sap/src/zcl_zsa_ai_batch.clas.json',
+  'sap/src/zcl_zsa_ai_batch.clas.abap',
+  'sap/src/zcl_zsa_ai_batch.clas.testclasses.abap',
+  'sap/src/zsa_ai_batch_run.prog.json',
+  'sap/src/zsa_ai_batch_run.prog.abap',
   'sap/src/zsa.http.json',
   'sap/src/zsa_outbox_push.prog.json',
   'sap/src/zsa_outbox_push.prog.abap',

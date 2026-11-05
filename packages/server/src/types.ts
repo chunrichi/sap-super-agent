@@ -7,6 +7,8 @@ import type { EventSocketHub } from './ws/event-socket.js';
 import type { SapIntegrationConfig } from './hooks/sap-config.js';
 // --- S4: generic Hook runtime config (docs/008 §6) ---
 import type { HooksRuntimeConfig } from './hooks/hook-config.js';
+// --- S5: SAP batch AI executor config (docs/003 §4.8) ---
+import type { SapAiBatchConfig } from './sap-ai/config.js';
 
 /** Options accepted by `startServer` (all optional except `stateDir`). */
 export interface ServerOptions {
@@ -32,6 +34,11 @@ export interface ServerOptions {
   gateTimeoutMs?: number;
   // --- S3: per-user concurrency cap for human (vscode) tasks (docs/003 §3 rule 6) ---
   maxConcurrentPerUser?: number;
+  /**
+   * S5: SAP batch AI executor overrides (test/ops injection). Always win over
+   * the environment; passing an object implies `enabled: true` unless set.
+   */
+  sapAiBatch?: Partial<SapAiBatchConfig>;
 }
 
 export interface RunningServer {
@@ -62,6 +69,8 @@ export interface ServerConfig {
   gateTimeoutMs: number | null;
   // --- S3: default 2; only constrains human (vscode) tasks ---
   maxConcurrentPerUser: number;
+  // --- S5: SAP batch AI executor; always present (enabled:false when off) ---
+  sapAi: SapAiBatchConfig;
 }
 
 /** Shared, immutable-per-server services passed to routes and workers. */
@@ -86,4 +95,10 @@ export interface ServerContext {
    * surfaces behave exactly as before.
    */
   readonly hooks: HooksRuntimeConfig;
+  /**
+   * S5: resolved SAP batch AI executor config (docs/003 §4.8). Always present;
+   * disabled mode keeps `enabled:false` / `hookSecret:null` so H0–S4 surfaces
+   * are byte-for-byte unchanged.
+   */
+  readonly sapAi: SapAiBatchConfig;
 }

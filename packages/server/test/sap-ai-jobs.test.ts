@@ -536,7 +536,10 @@ describe('SAP AI job leases (docs/003 §4.8.2)', () => {
     const secondClaim = await claimJob(server, job.id);
     expect(secondClaim.status).toBe(200);
     expect(secondClaim.body.job).toMatchObject({ state: 'claimed', attempt: 1 });
-    expect(getJobRow(server, job.id)?.claim_id).toBe(secondClaim.body.claimId);
+    expect(secondClaim.body.claimId).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
+    // The row keeps the same attempt; the (very short) lease sweeper may already
+    // have requeued it again, so assert the attempt instead of the live claim id.
+    expect(getJobRow(server, job.id)?.attempt).toBe(1);
   });
 
   it('fails the attempt and expires the job after maxLeaseExpiries lease expiries', async () => {

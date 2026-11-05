@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/clients/vscode"
+      ],
+      "outFiles": ["${workspaceFolder}/packages/clients/vscode/dist/**/*.cjs"],
+      "preLaunchTask": "vscode: build extension bundle"
+    }
+  ]
+}

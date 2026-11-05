@@ -2,7 +2,13 @@
   "name": "sap-superagent-vscode",
   "displayName": "SAP Super Agent",
   "description": "Task inbox for SAP Super Agent: claim tasks, open context packs, report artifacts.",
-  "version": "0.0.0",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chunrichi/sap-super-agent.git",
+    "directory": "packages/clients/vscode"
+  },
+  "version": "1.0.0",
   "private": true,
   "publisher": "sap-superagent",
   "type": "module",
@@ -10,7 +16,7 @@
     "vscode": "^1.90.0"
   },
   "categories": ["Other"],
-  "main": "./dist/extension.js",
+  "main": "./dist/extension.cjs",
   "activationEvents": [
     "onView:sapSuperAgent.inbox",
     "onCommand:sapSuperAgent.connect",
@@ -62,7 +68,9 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "build": "tsc -p tsconfig.build.json",
+    "bundle": "node ../../../scripts/vsix-package.mjs --bundle-only",
+    "build": "pnpm run bundle",
+    "package:vsix": "node ../../../scripts/vsix-package.mjs",
     "check": "pnpm run typecheck && pnpm run test"
   },
   "dependencies": {

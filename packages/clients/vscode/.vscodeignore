@@ -1,0 +1,17 @@
+# VSIX content policy (task-1): ship only what runs.
+#
+# The runtime is the esbuild single-file bundle `dist/extension.cjs`; everything
+# else in this folder is development input. Keep this file in sync with
+# `scripts/vsix-package.mjs`, which additionally stages a clean copy before
+# running vsce so a stale local build can never leak into a release artifact.
+src/**
+test/**
+node_modules/**
+dist/**/*.map
+dist/**/*.d.ts
+dist/**/*.js
+tsconfig*.json
+vitest.config.ts
+.vscode/**
+.eslintrc*
+*.log

@@ -7,7 +7,9 @@
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | H0 | [H0-walking-skeleton.md](H0-walking-skeleton.md) | done | lead（协作者 svc-server：server/ai；svc-clients：cli/vscode；verifier：只读验收三轮，最终 YES） | feat/h0-walking-skeleton | d03dc29（代码完结于 8b97215） | `pnpm install --frozen-lockfile` ✅；`pnpm check` ✅（8 包 typecheck + eslint + **252** 单测/集成 + contract 快照 27 schemas / 5 examples / 19 routes）；`pnpm e2e` ✅（4/4，多轮运行无 flake）；`pnpm build` ✅（8/8）；H0 §2 手工冒烟 ✅（healthz → 建需求 → AI 工件 → 手建任务 → 注册/心跳/领取/上下文/工件/完成 → 事件时间线 → SIGINT 优雅退出） | 完成；偏差与遗留见下节 |
 | H1 | [H1-gates-and-templates.md](H1-gates-and-templates.md) | done | h1-agent（worktree `.sap-superagent-worktrees/h1`；Lead 集成验收） | feat/h1-gates | 238fd08 | 分支自测：`pnpm check` ✅ 303 tests、`pnpm e2e` ✅ 8/8、`pnpm eval:golden` ✅ 24 cases（schema/checklist/reference 100%，人工修改率 11.2% → auto）；集成验收（integrate/h1-h2）：`pnpm check` ✅ **350 tests**、`pnpm e2e` ✅ 9/9、`pnpm eval:golden` ✅、`pnpm sap:check` ✅、`pnpm build` ✅ 8/8、curl 手工冒烟 G1→自动任务→G3→G4→done ✅ | 任务书 §1.1–§1.7 全部落地；偏差见「H1 偏差与遗留」 |
-| H2 | [H2-sap-icf-mime.md](H2-sap-icf-mime.md) | done（Phase A；Phase B blocked） | h2-agent（worktree `.sap-superagent-worktrees/h2`；Lead 集成验收） | feat/h2-sap | 0eb35c4 | 分支自测：`pnpm check` ✅ 299 tests、`pnpm e2e` ✅ 5/5、`pnpm sap:check` ✅ 5 pass/1 skip、`pnpm build` ✅；集成验收：SAP 链路已接到 H1 门禁运行时，e2e 9/9（含 SAP 全链路）、`pnpm sap:check` ✅；Phase B 仅只读连通，未做任何 SAP 写操作 | Phase A 交付完成；Phase B 所需人工输入与偏差见「H2 Phase A 偏差与遗留」「Lead 集成验收」 |
+| H2 | [H2-sap-icf-mime.md](H2-sap-icf-mime.md) | done（Phase A）；Phase B → H2-B | h2-agent（worktree `.sap-superagent-worktrees/h2`；Lead 集成验收） | feat/h2-sap | 0eb35c4 | 分支自测：`pnpm check` ✅ 299 tests、`pnpm e2e` ✅ 5/5、`pnpm sap:check` ✅ 5 pass/1 skip、`pnpm build` ✅；集成验收：SAP 链路已接到 H1 门禁运行时，e2e 9/9（含 SAP 全链路）、`pnpm sap:check` ✅；Phase B 仅只读连通，未做任何 SAP 写操作 | Phase A 交付完成；Phase B 转入 H2-B 行（用户决策 `$ZSA` + abap-cli）。偏差见「H2 Phase A 偏差与遗留」「Lead 集成验收」 |
+| H2-B | [H2-sap-icf-mime.md](H2-sap-icf-mime.md)（§1.6 Phase B） | todo | 待认领 | — | — | — | 用户决策（2026-11-05）：本地包 `$ZSA`、无 TR、全部 abap-cli、abapGit 不实现；只读核实：测试系统可达、`$ZSA` 为空。可交付：DDIC/类/ICF/MIME/ABAP Unit/ICF health；端到端回写仍缺控制平面可达 + HMAC + SSO。启动 Prompt 见 [H2 任务书](H2-sap-icf-mime.md) §1.6 |
+| S3 | [S3-multi-user-dispatch.md](S3-multi-user-dispatch.md) | todo | 待认领 | — | — | — | 多人在线与派发：WS 资格过滤、客户端实时/重连、`maxConcurrentPerUser` + 任务转交、工作区/多窗口端到端、任务箱「等待我回答」接审批、009 #1–#5/#8/#9/#16；写范围/验收/启动 Prompt 见任务书 |
 
 ## H0 偏差与遗留（交接给 H1 / H2 / 用户）
 
@@ -62,6 +64,8 @@
 | 2026-11-05 | H1 落地：`feat/h1-gates` 推送 → PR #2 → CI ✅ 56s → merge commit `a510be2` 合入 main；main 树 == H1 tip（`git diff` 为空） |
 | 2026-11-05 | H2 落地：`feat/h2-sap` rebase 到新 main（`--onto origin/main a9e5e98`，共享文件取集成版）+ cherry-pick 集成修复，分支树 == `integrate/h1-h2`；推送 → PR #3 → CI ✅ 58s → merge commit `a242afe` 合入 main；main 树 == `integrate/h1-h2`（`git diff` 为空），main push CI ✅ |
 | 2026-11-05 | 收尾 docs PR：把「已合入 main / PR #1–#3 / CI 结果」写回 STATUS 与 HANDOFF；远端 `feat/h1-gates`、`feat/h2-sap` 分支合并后删除 |
+| 2026-11-05 | 用户决策（H2 Phase B）：目标 package 用**本地包 `$ZSA`**（`$` 前缀，无 TR，对象仅测试系统生效）；全部用 **abap-cli**，**abapGit 本轮不实现**。只读核实：测试系统可达（TLS/auth/ADT/ICF ok）、`$ZSA` 存在且为空、ICF 服务版本 warning 不阻断 |
+| 2026-11-05 | 起草 S3 任务书 [S3-multi-user-dispatch.md](S3-multi-user-dispatch.md)（起点盘点/交付物/e2e 覆盖/写范围/启动 Prompt）；新增 H2-B、S3 看板行；HANDOFF、docs/004、docs/006、sap/README 同步 `$ZSA` + abap-cli 决策 |
 
 ## H2 Phase A 偏差与遗留（交接给 H1 / Lead / 用户）
 
@@ -91,5 +95,5 @@
   - `pnpm build` ✅ 8/8
   - **curl 手工冒烟** ✅：healthz → `GET /templates`（default 3 阶段/3 门禁、pdo 6 阶段/5 门禁）→ 建 default Demand → G1 前停 `waiting_human`（工件 `in_review`、Approval 绑定 v1）→ `GET /approvals?assignee=me` → approve G1（重复决策 409）→ 自动生成 vscode 任务（`requiredRoles=["developer"]`，context.md 614 字符）→ 注册/心跳/claim → 提交 `code_change` 工件 → complete → G3 approve → G4 approve → demand `done`（3 个工件 approved，事件链完整）→ 通知 6 条未读 → 另建 pdo Demand 6 阶段且原 default Demand 不受影响。
 - **落地（已合入 main）**：PR #1 H0 → `de173f2`；PR #2 H1 → `a510be2`（CI ✅ 56s）；PR #3 H2 → `a242afe`（CI ✅ 58s）。H2 在 H1 合入后 rebase 到新 main 并包含集成修复 `4e105c1`，合入后 **`main` 树与 `integrate/h1-h2` 完全一致**（`git diff` 为空）；main 的 push CI 全绿。本地 `integrate/h1-h2` 保留为交付对照，远端 `feat/h1-gates`/`feat/h2-sap` 合并后删除（`feat/h0-walking-skeleton` 属 PR #1，留待用户处理）。
-- **待用户/人工输入**：H2 Phase B（测试系统 package/TR、Basis SSO/ICF 服务账号、控制平面可达 URL + HMAC secret 注入方式）；H0→main 合入方式；真实 VSCode Extension Host 冒烟（发布前）。
+- **待用户/人工输入（H2-B 剩余项）**：控制平面可被测试系统访问的部署/隧道、HMAC secret 注入方式、Basis SSO/ICF 服务账号；`package` 已解决（本地包 `$ZSA`，无 TR）。真实 VSCode Extension Host 冒烟仍留发布前。
 

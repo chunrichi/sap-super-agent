@@ -6,9 +6,9 @@
 ## 0. 一分钟了解
 
 - **项目**：面向 SAP 研发交付的 super-agent。需求记录在 SAP（ICF + MIME 自建 Web），编排在可移植控制平面（本地 M1 / 独立服务 M2），编码在开发者 VSCode（Copilot Chat 人机协作），重复文档由服务端 AI（BYOK）主动生成。
-- **当前状态（2026-11-05）**：**H0 / S0 已完成**（`feat/h0-walking-skeleton` @ `a9e5e98`，已推送）；**H1 / S1 已完成**（`feat/h1-gates` @ `238fd08`：模板/门禁/checklist/工件版本与 stale/autonomy/golden set）；**H2 / S2 Phase A 已完成，Phase B blocked**（`feat/h2-sap` @ `0eb35c4`：fake ICF + `sap-adapter` + `/hooks/sap` + 回写 worker + `sap/` ABAP 源文件，未连接真实系统、未做 SAP 写操作）。H1+H2 已在 `integrate/h1-h2` 合并验收：`pnpm check`（**350 tests**）/ `pnpm e2e`（**9/9**）/ `pnpm eval:golden` / `pnpm sap:check` / `pnpm build` 全绿 + curl 手工冒烟通过。**已通过 PR #1（H0）/ #2（H1）/ #3（H2）合入 `main`**（H1 merge `a510be2`、H2 merge `a242afe`；main CI 全绿，main 树与 `integrate/h1-h2` 一致）。详见 [handoffs/STATUS.md](handoffs/STATUS.md) 的「Lead 集成验收」。
-- **本轮目标（已达成）**：S1（门禁与模板，H1）与 S2（SAP 需求系统，H2）——H1 全量完成；H2 Phase A（离线/CI 全链路）完成，Phase B（真实测试系统联调）等待用户提供 package/TR/Basis 配置。
-- **下一棒**：S0/S1/S2-PhaseA 已全部在 `main`（CI 绿）。下一步：① **H2 Phase B**（真实测试系统联调，需人工输入 package/TR/Basis SSO/HMAC，见 STATUS「H2 Phase A 偏差与遗留」）；② **S3 多人在线与派发**（需先按 [docs/007 S3](docs/007-roadmap.md) 新建任务书/handoff，再认领）；③ 发布前真实 VSCode Extension Host/VSIX 冒烟。执行协调与 worktree 用法见 [handoffs/H1-H2-execution-handoff.md](handoffs/H1-H2-execution-handoff.md)。
+- **当前状态（2026-11-05）**：**H0 / S0 已完成**（`feat/h0-walking-skeleton` @ `a9e5e98`，已推送）；**H1 / S1 已完成**（`feat/h1-gates` @ `238fd08`：模板/门禁/checklist/工件版本与 stale/autonomy/golden set）；**H2 / S2 Phase A 已完成，Phase B blocked**（`feat/h2-sap` @ `0eb35c4`：fake ICF + `sap-adapter` + `/hooks/sap` + 回写 worker + `sap/` ABAP 源文件，未连接真实系统、未做 SAP 写操作）。H1+H2 已在 `integrate/h1-h2` 合并验收：`pnpm check`（**350 tests**）/ `pnpm e2e`（**9/9**）/ `pnpm eval:golden` / `pnpm sap:check` / `pnpm build` 全绿 + curl 手工冒烟通过。**已通过 PR #1（H0）/ #2（H1）/ #3（H2）合入 `main`**（H1 merge `a510be2`、H2 merge `a242afe`；main CI 全绿，main 树与 `integrate/h1-h2` 一致）。详见 [handoffs/STATUS.md](handoffs/STATUS.md) 的「Lead 集成验收」。**2026-11-05 用户决策**：H2 Phase B 用本地包 `$ZSA`（无 TR，对象仅测试系统生效）+ abap-cli 推进（abapGit 本轮不实现）；S3 任务书已起草：[handoffs/S3-multi-user-dispatch.md](handoffs/S3-multi-user-dispatch.md)。
+- **当前冲刺（2026-11-05 起）**：① **H2 Phase B**：用 abap-cli 在本地包 `$ZSA` 建 SAP 对象/激活/ABAP Unit；② **S3 多人在线与派发**：按 [handoffs/S3-multi-user-dispatch.md](handoffs/S3-multi-user-dispatch.md) 推进。两者可并行（写范围不重叠），worktree 隔离。
+- **下一棒**：S0/S1/S2-PhaseA 已全部在 `main`（CI 绿）。当前待办：① **H2-B**（[H2 任务书](handoffs/H2-sap-icf-mime.md) §1.6 Phase B）：本地包 `$ZSA` + abap-cli 建对象/激活/ABAP Unit；端到端回写仍缺控制平面可达性 + HMAC + SSO；② **S3**（[任务书](handoffs/S3-multi-user-dispatch.md)）：WS 资格过滤、客户端实时/重连、用户并发与任务转交、工作区/多窗口、任务箱接审批；③ 发布前真实 VSCode Extension Host/VSIX 冒烟。执行协调与 worktree 用法见 [handoffs/H1-H2-execution-handoff.md](handoffs/H1-H2-execution-handoff.md)。
 
 ## 1. 阅读顺序
 
@@ -40,16 +40,18 @@
 | --- | --- | --- | --- | --- |
 | **H0** | [handoffs/H0-walking-skeleton.md](handoffs/H0-walking-skeleton.md) | S0：本地 M1 闭环（需求→AI 分析→客户端领取→工件→完成） | 无 | `packages/**`、`contracts/**`、`scripts/**`、`.github/workflows/**`、`templates/default.yaml` |
 | **H1** | [handoffs/H1-gates-and-templates.md](handoffs/H1-gates-and-templates.md) | S1：门禁/审批、阶段模板、工件版本与 stale、golden set 评测 | H0 | `packages/core/**`、`packages/server/**`、`packages/ai/**`、`templates/**`、`evals/**`、`scripts/eval-golden.mjs` |
-| **H2** | [handoffs/H2-sap-icf-mime.md](handoffs/H2-sap-icf-mime.md) | S2：SAP DDIC + ICF JSON + MIME Web + 事件 outbox + `sap-adapter` | H0（协议冻结；DDIC/ICF 可提前） | `sap/**`、`packages/sap-adapter/**`、`packages/server/src/hooks/sap*`、`packages/server/src/workers/sap*` |
+| **H2** | [handoffs/H2-sap-icf-mime.md](handoffs/H2-sap-icf-mime.md) | S2：SAP DDIC + ICF JSON + MIME Web + 事件 outbox + `sap-adapter`（Phase A done；Phase B 用 `$ZSA` + abap-cli） | H0（协议冻结） | `sap/**`、`packages/sap-adapter/**`、`packages/server/src/hooks/sap*`、`packages/server/src/workers/sap*` |
+| **S3** | [handoffs/S3-multi-user-dispatch.md](handoffs/S3-multi-user-dispatch.md) | S3：多人在线与派发（WS 资格过滤、客户端实时、任务转交、工作区匹配、任务箱审批组） | S0–S2 Phase A | `packages/core/**`、`packages/server/**`、`packages/protocol/**`、`packages/clients/vscode/**`、`packages/testkit/**`、`contracts/**`、`docs/003/005/007` |
 
 ```text
-H0（done）──┬──> H1（done：feat/h1-gates）
-            └──> H2（Phase A done：feat/h2-sap；Phase B blocked 等待测试系统/package/TR）
-                          │
-                          └──> 集成验收（已合入 main：PR #2 `a510be2` + PR #3 `a242afe`）
+H0（done）──┬──> H1（done）──┐
+            └──> H2（Phase A done）──┴──> main（PR #1/#2/#3，CI 绿）
+
+main ──┬──> H2-B（todo：$ZSA + abap-cli 建对象/激活/ABAP Unit）
+       └──> S3（todo：多人在线与派发）
 ```
 
-> **当前进度（2026-11-05）**：H0/H1 done 并已合入 `main`（PR #1/#2）；H2 Phase A done 并已合入 `main`（PR #3），Phase B blocked。并行采用 worktree 隔离（`.sap-superagent-worktrees/{h1,h2}`，分支 `feat/h1-gates` / `feat/h2-sap`）；门禁、冒烟、落地记录与偏差详见 [handoffs/STATUS.md](handoffs/STATUS.md)。
+> **当前进度（2026-11-05）**：H0/H1/H2 Phase A done 并已合入 `main`（PR #1/#2/#3）。当前并行任务：**H2-B**（本地包 `$ZSA` + abap-cli）与 **S3**（多人在线与派发），均待认领；worktree 隔离，写范围见各自任务书。状态、落地记录与偏差详见 [handoffs/STATUS.md](handoffs/STATUS.md)。
 
 - 同一时刻**一个 Agent 只做一个任务**。需要并行时，在 `handoffs/STATUS.md` 登记 owner + 写范围，避免两个 Agent 改同一目录。
 - H2 与 H1 的 `packages/server` 写范围有交集：H1 只改 `packages/server/src/{core 集成,approvals,templates}.ts`，H2 只改 `packages/server/src/hooks/` 与 `workers/sap-*`；都要改共享文件时在 STATUS.md 协调。
@@ -106,10 +108,11 @@ pnpm e2e
 | 权限 | v1 不建模；只记录操作人；后续接 SAP 授权 |
 | JIRA / CHARM / Confluence / Teams | 只按 [008](docs/008-hooks.md) 定义契约与 `http` 示例目标，不实现具体适配器 |
 | MCP | v1.1 可选；本轮不实现 |
-| SAP 系统 | 只连测试系统；对象用 abap-cli 建，传输请求由使用者提供 |
+| SAP 系统 | 只连测试系统；**Phase B 用本地包 `$ZSA`（无 TR，对象仅测试系统生效）**；对象一律用 abap-cli 建，**abapGit 本轮不实现**；不自动激活生产 |
 | 服务端模型 | BYOK；无 Key 时用 fake provider |
 | M3（SAP 内批处理 AI） | 不在本轮 |
 | 门禁 | H1 默认模板 3 阶段 G1/G3/G4；PDO 6 阶段作为预设 |
+| 多人在线（S3） | 任务书 [handoffs/S3-multi-user-dispatch.md](handoffs/S3-multi-user-dispatch.md)；worktree `.sap-superagent-worktrees/s3`，分支 `feat/s3-<slug>` |
 
 遇到 [001 §6](docs/001-review.md) 的待确认项时，按本表默认推进，并在报告里标注。
 
@@ -117,6 +120,6 @@ pnpm e2e
 
 让新 Agent 在仓库根目录第一次发言时带上：
 
-> 你在 `/Users/lei/ai_space/sap_super_agent` 工作。先读 `HANDOFF.md`、`handoffs/STATUS.md`、`docs/000–009`，然后从 `handoffs/` 认领一个未完成任务（H1 或 H2；H0 已完成，参见 `handoffs/H1-H2-execution-handoff.md`），严格按任务书的写范围、验收标准执行；完成后更新 `handoffs/STATUS.md` 并回报。不要越过任务边界，不要直推 `main`。
+> 你在 `/Users/lei/ai_space/sap_super_agent` 工作（建议从 `main` 新建独立 worktree，见 `handoffs/H1-H2-execution-handoff.md` §0）。先读 `HANDOFF.md`、`handoffs/STATUS.md`、`docs/000–009`，然后从 `handoffs/` 认领一个未完成任务：**H2-B（H2 任务书 §1.6 Phase B，本地包 `$ZSA` + abap-cli）** 或 **S3（[handoffs/S3-multi-user-dispatch.md](handoffs/S3-multi-user-dispatch.md)）**。H0/H1/H2 Phase A 已完成并合入 `main`。严格按任务书写范围与验收标准执行；完成后更新 `handoffs/STATUS.md` 并回报。不要越过任务边界，不要直推 `main`。
 
 Lead/用户可用 `handoffs/STATUS.md` 之外的 `git log --oneline` 与 `pnpm check` 交叉验证进度。

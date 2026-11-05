@@ -11,3 +11,6 @@ export * from './in-memory-repository.js';
 export * from './fake-icf-server.js';
 // --- S4: in-process fake external system for the `http` hook target (docs/008) ---
 export * from './fake-hook-target.js';
+// --- S5: fake enterprise AI gateway + SAP batch executor (docs/003 §4.8) ---
+export * from './fake-ai-gateway.js';
+export * from './fake-sap-ai-batch.js';

@@ -7,14 +7,28 @@
   <link rel="stylesheet" href="/sap/zsa/ui/styles.css" />
 </head>
 <body>
-  <header class="bar">
-    <h1>ZSA 需求系统</h1>
-    <nav>
-      <button data-view="list" class="active">需求列表</button>
-      <button data-view="create">新建需求</button>
+  <header class="shell">
+    <a class="shell__brand" href="#/list">ZSA 需求系统</a>
+    <nav class="shell__nav" aria-label="主导航">
+      <a data-nav="list" href="#/list">需求列表</a>
+      <a data-nav="new" href="#/new">新建需求</a>
     </nav>
+    <div class="shell__user">
+      <span id="current-user" class="shell__user-name" hidden></span>
+      <span id="connection" class="shell__connection" data-state="connecting" role="status">连接中…</span>
+    </div>
   </header>
-  <main id="app" aria-live="polite"></main>
+
+  <div id="session-banner" class="banner" role="alert" hidden>
+    <span>SAP 会话已过期，请重新登录后再操作。</span>
+    <button type="button" class="btn btn--small" id="relogin">重新登录</button>
+  </div>
+
+  <main id="app" class="app"></main>
+
+  <p id="announcer" class="sr-only" aria-live="polite" aria-atomic="true"></p>
+  <div id="toast" class="toast" role="status" aria-live="assertive" hidden></div>
+
   <script src="/sap/zsa/ui/app.js" type="module"></script>
 </body>
 </html>

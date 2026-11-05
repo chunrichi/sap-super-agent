@@ -463,7 +463,7 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
         state         = ls_patch-approval-state
         decided_by    = ls_patch-approval-decided_by
         decided_at    = zcl_zsa_json=>now_tstmp( )
-        comment       = ls_patch-approval-comment ).
+        decision_comment = ls_patch-approval-comment ).
     ENDIF.
     COMMIT WORK AND WAIT.
     respond_json( io_response = io_response iv_status = 200
@@ -501,7 +501,7 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
       required_role = `consultant`
       decided_by  = ls_in-decided_by
       decided_at  = lv_now
-      comment     = ls_in-comment ).
+      decision_comment = ls_in-comment ).
     ls_demand-version = ls_demand-version + 1.
     ls_demand-changed_at = lv_now.
     UPDATE zsa_demand FROM ls_demand.
@@ -649,7 +649,7 @@ CLASS zcl_zsa_http_handler IMPLEMENTATION.
         `","gateKey":"` && zcl_zsa_json=>escape_json( ls_approval-gate_key ) &&
         `","state":"` && zcl_zsa_json=>escape_json( ls_approval-state ) &&
         `","decidedBy":"` && zcl_zsa_json=>escape_json( ls_approval-decided_by ) &&
-        `","comment":"` && zcl_zsa_json=>escape_json( ls_approval-comment ) && `"}`.
+        `","comment":"` && zcl_zsa_json=>escape_json( ls_approval-decision_comment ) && `"}`.
     ENDLOOP.
     rv_json = rv_json && `]`.
   ENDMETHOD.

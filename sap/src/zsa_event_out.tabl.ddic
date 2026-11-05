@@ -1,17 +1,18 @@
-@EndUserText.label : 'ZSA event outbox'
-@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE
+@EndUserText.label : 'ZSA outbound event outbox (at-least-once push)'
+@AbapCatalog.enhancement.category : #EXTENSIBLE_ANY
 @AbapCatalog.tableCategory : #TRANSPARENT
 @AbapCatalog.deliveryClass : #A
 @AbapCatalog.dataMaintenance : #RESTRICTED
 define table zsa_event_out {
-  key client           : abap.clnt not null;
-  key event_id         : abap.char(32) not null;
-  type                 : abap.char(40) not null;
-  demand_id            : abap.char(32);
-  payload              : abap.string(0) not null;
-  state                : abap.char(10) not null;
-  attempts             : abap.int4 not null;
-  next_at              : abap.timestampl not null;
-  created_at           : abap.timestampl not null;
-  changed_at           : abap.timestampl not null;
+
+  key mandt    : mandt not null;
+  key event_id : abap.char(000032) not null;
+  type         : abap.char(000040) not null;
+  demand_id    : abap.char(000032);
+  payload      : abap.string(000000);
+  state        : abap.char(000010) not null;
+  attempts     : abap.int4 not null;
+  next_at      : timestampl not null;
+  created_at   : timestampl not null;
+  changed_at   : timestampl not null;
 }

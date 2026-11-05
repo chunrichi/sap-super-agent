@@ -1,12 +1,14 @@
-@EndUserText.label : 'ZSA demand long text'
-@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE
+@EndUserText.label : 'ZSA demand long text and acceptance criteria'
+@AbapCatalog.enhancement.category : #EXTENSIBLE_ANY
 @AbapCatalog.tableCategory : #TRANSPARENT
 @AbapCatalog.deliveryClass : #A
 @AbapCatalog.dataMaintenance : #RESTRICTED
 define table zsa_demand_t {
-  key client           : abap.clnt not null;
-  key demand_id        : abap.char(32) not null;
-  key lang             : abap.lang not null;
-  description          : abap.string(0);
-  acceptance           : abap.string(0);
+
+  key mandt     : mandt not null;
+  key demand_id : abap.char(000032) not null;
+  @AbapCatalog.textLanguage
+  key lang      : abap.lang not null;
+  description   : abap.string(000000);
+  acceptance    : abap.string(000000);
 }

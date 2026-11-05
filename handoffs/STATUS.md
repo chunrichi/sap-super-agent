@@ -10,7 +10,7 @@
 | H2 | [H2-sap-icf-mime.md](H2-sap-icf-mime.md) | done（Phase A）；Phase B → H2-B | h2-agent（worktree `.sap-superagent-worktrees/h2`；Lead 集成验收） | feat/h2-sap | 0eb35c4 | 分支自测：`pnpm check` ✅ 299 tests、`pnpm e2e` ✅ 5/5、`pnpm sap:check` ✅ 5 pass/1 skip、`pnpm build` ✅；集成验收：SAP 链路已接到 H1 门禁运行时，e2e 9/9（含 SAP 全链路）、`pnpm sap:check` ✅；Phase B 仅只读连通，未做任何 SAP 写操作 | Phase A 交付完成；Phase B 转入 H2-B 行（用户决策 `$ZSA` + abap-cli）。偏差见「H2 Phase A 偏差与遗留」「Lead 集成验收」 |
 | H2-B | [H2-sap-icf-mime.md](H2-sap-icf-mime.md)（§1.6 Phase B） | done（已合入 main，PR #7） | h2b-agent（worktree `.sap-superagent-worktrees/h2b`） | feat/h2-phase-b | 5cd1b52（AFF）/ 852afe6（bootstrap 重放）/ c867cfc（类修复）/ a074824（docs+STATUS） | 测试系统（profile=test）：`$ZSA` 已创建（TDEVC 复核）；6/6 表 active（DD02L/DD03L：INT4/TIMESTAMPL/STRG 未降级；`abap pull` 与仓库 AFF 逐字节一致）；3 类 + testclasses active（`inspect --activation` ok）+ ABAP Unit 6/6；ICF `/sap/zsa` 已建、handler=`ZCL_ZSA_HTTP_HANDLER`、无凭据探测 **401**（节点可达）；MIME `/zsa/ui` create+push uploaded=3（本地包无 TR）；`ZSA_OUTBOX_PUSH` active；`abap check syntax --all` ✅；`abap validate:aff` 18/18 ✅；`pnpm sap:check` 离线 5 pass/1 skip + `SA_SAP_CHECK_ONLINE=1` 6 pass ✅；**Lead 独立复核**：`pnpm check` 350 tests ✅、`pnpm e2e` 9/9 ✅、`abap test` 3/3+3/3 ✅、`DD03L` INT4/TIMESTAMPL/STRG ✅、`$ZSA` TDEVC PARENTCL=$TMP/DUVUNIT=LOCAL ✅、`pnpm build` ✅ | 偏差与 blocked 见「H2 Phase B 偏差与遗留」；上游缺陷 issue：<https://github.com/chunrichi/abap-cli/issues/34>；关键结论：`$ZSA` 实测不存在（`abap list` 假阴性）、DDIC 表由一次性 bootstrap 建（create TABL 缺陷）、`COMMENT`→`DECISION_COMMENT`、SICF 节点名 `ZSA`；**Lead 集成验收**：PR #7 merge `08b5cdc`，CI ✅ 45s；合入后 main 树 == H2-B 分支；本地 main 复核 check/e2e/sap:check（离线+在线）/build 全绿，`abap test` 6/6、DD03L 抽检通过 |
 | S3 | [S3-multi-user-dispatch.md](S3-multi-user-dispatch.md) | done（已合入 main，PR #6） | s3-agent（worktree `.sap-superagent-worktrees/s3`） | feat/s3-multi-user | 809390d（代码完结；fa801f5 协议 → ad49081 core → 81f234b WS 过滤 → b6fb513 transfer → 5bf90bc/607b8fc 客户端 → 809390d e2e → 本次 docs/STATUS 收尾提交） | `pnpm check` ✅ **402 tests**（protocol 59 / ai 28 / core 52 / vscode 98 / server 67 / testkit 23 / cli 44 / sap-adapter 31；contract 39 schemas / 5 examples / 19 routes）；`pnpm e2e` ✅ **15/15，3.91s**（<5s）；`pnpm build` ✅ 8/8；多执行器 e2e 覆盖 009 #1/#2/#4/#5/#8/#9/#16 + 转交冒烟（手工复现见「S3 验收复现」） | WS `task.offered` 按执行器资格过滤（连接绑定 executorId，user/admin 不收）、`maxConcurrentPerUser`（默认 2，仅 vscode）、`POST /tasks/{id}/transfer`（迁移 v5 审计、回池 + 事件链、幂等、409）、客户端 WS 实时/退避重连/lastSeq(globalState)/resync 全量拉取、任务箱「等待我回答」接 H1 approvals/notifications、工作区切换立即 release、client preflight；偏差见「S3 偏差与遗留」；未 push、未合入 main、未跑真机 Extension Host；**Lead 集成验收**：PR #6 merge `5c27eb2`，CI ✅ 46s；合入后 main 树 == S3 分支；Lead 独立复核 check 402 tests / e2e 15/15 / build ✅ |
-| S4 | [S4-hooks.md](S4-hooks.md) | review（完成，待 Lead/用户评审与 PR） | s4-agent（lead 执行；worktree `.sap-superagent-worktrees/s4`） | feat/s4-hooks | 00f263a（代码完结：f26e2d5 契约 → c9bb6c3 配置/触发 → caa1f43 投递 → f718e68 管理/replay → 34532de 回执 → 50a7d7a 对账 → 37dcea5 占位适配器 → f35fa8d e2e/docs → 00f263a 对账修正；本次 STATUS 收尾） | `pnpm check` ✅ **438 tests**（protocol 59 / sap-adapter 31 / ai 28 / core 52 / vscode 98 / server 90 / cli 44 / testkit 36；contract 47 schemas / 7 examples / 22 routes）；`pnpm e2e` ✅ **16/16，4.07s**（<5s，新增通用 Hook 全链路）；`pnpm build` ✅ 8/8；`pnpm hooks:reconcile` ✅（无 state 时说明并退出 0；真实 state 冒烟 4 差异、`--fail-on-diff` 退出 3） | 交付见任务书 §1.1–§1.8；偏差/遗留见「S4 偏差与遗留」；任务书 §2 五条手工冒烟复现见「S4 验收复现」；**未 push、未合入 main** |
+| S4 | [S4-hooks.md](S4-hooks.md) | review（完成，待 Lead/用户评审与 PR） | s4-agent（lead 执行；worktree `.sap-superagent-worktrees/s4`） | feat/s4-hooks | cf395e6（代码完结：f26e2d5 契约 → c9bb6c3 配置/触发 → caa1f43 投递 → f718e68 管理/replay → 34532de 回执 → 50a7d7a 对账 → 37dcea5 占位适配器 → f35fa8d e2e/docs → 00f263a 对账修正 → 8f3025c STATUS 收尾 → cf395e6 复核修复；本次 docs 收尾） | `pnpm check` ✅ **440 tests**（protocol 59 / sap-adapter 31 / ai 28 / core 52 / vscode 98 / server 91 / cli 44 / testkit 37；contract 47 schemas / 7 examples / 22 routes）；`pnpm e2e` ✅ **16/16，4.04s**（<5s，新增通用 Hook 全链路）；`pnpm build` ✅ 8/8；`pnpm hooks:reconcile` ✅（无 state 时说明并退出 0；真实 state 冒烟 4 差异、`--fail-on-diff` 退出 3）；`pnpm install --frozen-lockfile --offline` ✅ | 交付见任务书 §1.1–§1.8；偏差/遗留见「S4 偏差与遗留」；任务书 §2 五条手工冒烟复现见「S4 验收复现」；**未 push、未合入 main** |
 
 ## H0 偏差与遗留（交接给 H1 / H2 / 用户）
 
@@ -94,6 +94,7 @@
 | 2026-11-05 | S4 对账 CLI 收尾修正：`resolveHooksConfig` 增加只读模式（`requireSecrets: false`），`hooks:reconcile` 无需导出 secret（只读不签名/验签）；`scripts/hooks-reconcile.mjs` 直接 spawn tsx（不经 `pnpm exec`）以保留退出码 0/3/2。手工冒烟实测：真实控制平面 + FakeHookTarget 落盘 state → CLI `--sla-hours 0` 输出 4 差异（external_only 1 + dead_letter 1 + delivered_without_receipt 1 + unknown_receipt 1，外部列表 2 items compared），`--fail-on-diff` 退出 3、默认退出 0 |
 | 2026-11-05 | S4 完成自测（待 Lead/用户评审）：`pnpm check` ✅ 438 tests（contract 47/7/22）、`pnpm e2e` ✅ 16/16（4.07s）、`pnpm build` ✅ 8/8、`pnpm hooks:reconcile` ✅（真实 state 冒烟 4 差异，退出码 0/3）；任务书 §2 五条冒烟以 e2e/集成 + 真实 state CLI 复现（见「S4 验收复现」）；分支 `feat/s4-hooks` 未 push、未合入 main |
 | 2026-11-05 | S4 独立复核（Lead 视角）修复：发现回执幂等键跨 Hook 冲突（`hook_receipts.idempotency_key` 全局 UNIQUE + 查询未按 hook 过滤，两个集成用同一外部幂等键时第二个会被误判 `duplicate:true`）→ v6 改为 `(hook_id, idempotency_key)` 唯一 + 查询按 hook 过滤 + 回归测试（同 key 两个 hook 各自落库）；空/纯注释 hooks 配置文件按“全部禁用”处理（原报错）并加测试；`retry.deadLetter` 文档注明是目标提示字段、控制平面一律死信；测试用固定端口 9099 改为必然拒绝的 `127.0.0.1:1` 消除环境依赖。`pnpm install --frozen-lockfile --offline` ✅ |
+| 2026-11-05 | S4 复核修复后最终门禁（HEAD cf395e6 + 本次 docs）：`pnpm check` ✅ 440 tests（server 91 / testkit 37）、contract 47/7/22；`pnpm e2e` ✅ 16/16（4.04s）；`pnpm build` ✅ 8/8；`pnpm hooks:reconcile` ✅；`pnpm install --frozen-lockfile --offline` ✅；分支未 push、未合入 main |
 
 ## H2 Phase A 偏差与遗留（交接给 H1 / Lead / 用户）
 
@@ -106,7 +107,7 @@
 7. **SAP 侧未经真机语法检查**：Phase B blocked，ABAP 源文件只经过 `abap validate:aff`（JSON/companion）与 `abap check content`（离线结构校验）；`cl_abap_hmac`/`/ui2/cl_json`/`cl_system_uuid`/`cl_mime_repository_api` 等 API 需在目标 release 的 `abap check syntax` + ABAP Unit 中复核（`sap/README.md` §Phase B）。`ZSA_DEMAND` 新增 `VERSION` 字段用于 `If-Match`（已补 docs/004 §2/§2.2）。
 8. **HMAC 密钥引用**：`ZSA_CFG` 只存 `CONTROL_PLANE_URL` 与 `HMAC_SECRET_REF`；具体 SSF/`CL_ABAP_SEC` 注入方式留待 Phase B 由 Basis 确认（`ZCL_ZSA_EVENT_PUSH=>hmac_secret` 有 TODO 说明）。
 9. **e2e 与模板耦合（集成提醒）**：`packages/testkit/e2e/sap.e2e.test.ts` 当前基于 H0 两阶段 `default` 模板断言（AI 阶段自动 done、dev 阶段自动 ready、手建任务入通用箱）。H1 的三阶段 + 门禁模板合并后需要适配；Lead 已确认由其裁决集成适配，本分支以自身基线跑绿为准。
-10. **未做的可选项**：审批到期提醒 job（任务书标注"可后置"）；`GET /hooks` 通用管理面与 replay（008 §6 属 S4，本任务仅 SAP 一条 + `/hooks/sap/status`）；SAP 侧对 `If-Match` 的 ETag 变体（真实系统用 `VERSION`）。
+11. **未做的可选项**：审批到期提醒 job（任务书标注"可后置"）；`GET /hooks` 通用管理面与 replay（008 §6 属 S4，本任务仅 SAP 一条 + `/hooks/sap/status`）；SAP 侧对 `If-Match` 的 ETag 变体（真实系统用 `VERSION`）。
 
 ## Lead 集成验收（H1+H2）
 
@@ -138,7 +139,7 @@
 8. **任务箱审批行**只有 `gateKey + requiredRole + 需求短号 + 工件版本`（Approval schema 无需求标题/工件摘要）；如需更丰富展示需服务端补只读聚合字段（未做）。
 9. **迁移 v5** 只追加 `task_transfers` 审计表，未改 v1–v4；`task.transferred` 事件类型进入协议枚举 → contracts diff（39 schemas）；无破坏性变更。
 10. **未 push、未合入 main**（按任务书约束）；`packages/server/test/ws-helpers.ts` 为抽取的测试工具（原 websocket.test 局部 helper），非生产代码。
-11. **e2e 用 fake executor**（testkit），不启动真实 VSCode；多执行器 e2e 每用例独立控制平面（临时 stateDir），总时长 3.91s（基线 9/9 约 3.1s，<5s 预算）。
+12. **e2e 用 fake executor**（testkit），不启动真实 VSCode；多执行器 e2e 每用例独立控制平面（临时 stateDir），总时长 3.91s（基线 9/9 约 3.1s，<5s 预算）。
 
 ### S3 验收复现（任务书 §2 手工冒烟，用集成/e2e 复现并记录命令）
 
@@ -192,12 +193,13 @@
 6. **取消语义为需求级粗粒度**：`demand.cancelled` / `stage.cancelled` / `artifact.rejected` 时取消**同需求**未发送的 Hook 行并写 `hook.cancelled`；已发送保持 `SENT`（v1 不补发关闭动作）——docs/008 §5 已写明。
 7. **`GET /hooks` 队列深度含 `cancelled`**：任务书要求 pending/sent/dead，本实现额外返回 `cancelled`（加法，schema `hook-status` 同时覆盖）；`lastAttempt` 由最近一条 `hook.attempted|delivered|dead` 事件推导。
 8. **迁移只追加**：v6 一次建 `hook_state`（入队游标）与 `hook_receipts`；v1–v5 未改。Hook 队列复用共享 `outbox`（`target='hook:<id>'`），SAP writeback 仍只扫 `sap.writeback`，`/hooks/sap` 行为与代码未改。
-9. **HMAC 三份独立实现**：SAP 路径（`sap-adapter`）保持原样；通用 Hook 在 `packages/server/src/hooks/hook-signature.ts` 内按同一规则实现（不 import sap-adapter）；testkit `FakeHookTarget` 再实现一份用于交叉校验。规则本身仍只有一套（`X-SA-Signature/Timestamp/Delivery`，±5min）。
-10. **对账**：只读、无需启用 hook 的 secret（`resolveHooksConfig({requireSecrets:false})`）；`--state-dir/--config/--sla-hours/--json/--fail-on-diff`，默认 state/config 从仓库根解析（wrapper 直接 spawn tsx 以保留退出码 0/3/2）。外部列表仅支持无鉴权 GET（数组或 `items|demands|records|issues`），`reconcileUrl` 的自定义 headers/鉴权未建模（v1 边界）。
-11. **测试位置**：Hook 集成测试放 `packages/testkit/test/hooks-integration.test.ts`（server 测试若 import testkit 会形成 workspace devDependency 循环），server 侧保留配置/签名/路由/对账单测；e2e 为 `packages/testkit/e2e/hooks.e2e.test.ts`（1 个用例覆盖任务书 §2 五条冒烟，总 e2e 4.07s）。
-12. **未做（任务边界）**：pause/resume、管理 UI、MCP、客户端展示、真实 JIRA/CHARM/Confluence/Teams 客户端、回执推进阶段、SAP `/hooks/sap` 重构；`hook.*` 事件会进入事件日志与 WS 事件流（契约有意为之，便于运维观测）。
-13. **首次启用会补发历史事件**：入队游标持久化在 `hook_state`；首次启动且尚无游标时从事件日志起点回放匹配事件（至少一次、不静默丢事件）。生产首次启用 Hook 前应评估历史事件是否需要投递（docs/008 §6 已写明）；反转此行为（默认从「现在」开始）需要额外配置项，未纳入 v1。
-14. **提交状态**：分支 `feat/s4-hooks`（worktree `.sap-superagent-worktrees/s4`）**未 push、未合入 main**；工作区 clean；无密钥/地址/`.env`/构建产物入库。
+9. **复核修订（v6 为分支内未发布迁移）**：回执幂等约束由全局 `idempotency_key` UNIQUE 改为 `(hook_id, idempotency_key)` 唯一并让查询按 hook 过滤（两个集成可用同一外部幂等键）；因 v6 仅存在于本分支、从未发布或产生既有库，直接修订 v6 而非新建 v7 表重建，v1–v5 仍未动。同时：空/纯注释配置按全禁用处理、`retry.deadLetter` 文档化为目标提示字段、测试去掉固定端口 9099。
+10. **HMAC 三份独立实现**：SAP 路径（`sap-adapter`）保持原样；通用 Hook 在 `packages/server/src/hooks/hook-signature.ts` 内按同一规则实现（不 import sap-adapter）；testkit `FakeHookTarget` 再实现一份用于交叉校验。规则本身仍只有一套（`X-SA-Signature/Timestamp/Delivery`，±5min）。
+11. **对账**：只读、无需启用 hook 的 secret（`resolveHooksConfig({requireSecrets:false})`）；`--state-dir/--config/--sla-hours/--json/--fail-on-diff`，默认 state/config 从仓库根解析（wrapper 直接 spawn tsx 以保留退出码 0/3/2）。外部列表仅支持无鉴权 GET（数组或 `items|demands|records|issues`），`reconcileUrl` 的自定义 headers/鉴权未建模（v1 边界）。
+12. **测试位置**：Hook 集成测试放 `packages/testkit/test/hooks-integration.test.ts`（server 测试若 import testkit 会形成 workspace devDependency 循环），server 侧保留配置/签名/路由/对账单测；e2e 为 `packages/testkit/e2e/hooks.e2e.test.ts`（1 个用例覆盖任务书 §2 五条冒烟，总 e2e 4.04s）。
+13. **未做（任务边界）**：pause/resume、管理 UI、MCP、客户端展示、真实 JIRA/CHARM/Confluence/Teams 客户端、回执推进阶段、SAP `/hooks/sap` 重构；`hook.*` 事件会进入事件日志与 WS 事件流（契约有意为之，便于运维观测）。
+14. **首次启用会补发历史事件**：入队游标持久化在 `hook_state`；首次启动且尚无游标时从事件日志起点回放匹配事件（至少一次、不静默丢事件）。生产首次启用 Hook 前应评估历史事件是否需要投递（docs/008 §6 已写明）；反转此行为（默认从「现在」开始）需要额外配置项，未纳入 v1。
+15. **提交状态**：分支 `feat/s4-hooks`（worktree `.sap-superagent-worktrees/s4`）**未 push、未合入 main**；工作区 clean；无密钥/地址/`.env`/构建产物入库。
 
 ### S4 验收复现（任务书 §2 手工冒烟）
 

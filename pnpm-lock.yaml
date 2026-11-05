@@ -92,6 +92,9 @@ importers:
       '@sap-superagent/protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@sap-superagent/sap-adapter':
+        specifier: workspace:*
+        version: link:../sap-adapter
       fastify:
         specifier: ^5.12.8
         version: 5.12.8
@@ -111,6 +114,9 @@ importers:
       '@sap-superagent/ai':
         specifier: workspace:*
         version: link:../ai
+      '@sap-superagent/sap-adapter':
+        specifier: workspace:*
+        version: link:../sap-adapter
       '@sap-superagent/server':
         specifier: workspace:*
         version: link:../server

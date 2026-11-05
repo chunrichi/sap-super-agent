@@ -1,0 +1,11 @@
+{
+  "formatVersion": "1",
+  "header": {
+    "description": "ZSA demand API + MIME UI",
+    "originalLanguage": "en"
+  },
+  "generalInformation": {
+    "handlerClass": "ZCL_ZSA_HTTP_HANDLER",
+    "servicePath": "/sap/zsa"
+  }
+}

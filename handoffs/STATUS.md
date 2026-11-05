@@ -6,8 +6,8 @@
 | ID | 任务书 | 状态 | Owner | 分支 | 最近提交 | 验证 | 备注 / 偏差 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | H0 | [H0-walking-skeleton.md](H0-walking-skeleton.md) | done | lead（协作者 svc-server：server/ai；svc-clients：cli/vscode；verifier：只读验收三轮，最终 YES） | feat/h0-walking-skeleton | d03dc29（代码完结于 8b97215） | `pnpm install --frozen-lockfile` ✅；`pnpm check` ✅（8 包 typecheck + eslint + **252** 单测/集成 + contract 快照 27 schemas / 5 examples / 19 routes）；`pnpm e2e` ✅（4/4，多轮运行无 flake）；`pnpm build` ✅（8/8）；H0 §2 手工冒烟 ✅（healthz → 建需求 → AI 工件 → 手建任务 → 注册/心跳/领取/上下文/工件/完成 → 事件时间线 → SIGINT 优雅退出） | 完成；偏差与遗留见下节 |
-| H1 | [H1-gates-and-templates.md](H1-gates-and-templates.md) | review（待 Lead 集成验收） | h1-agent（worktree `.sap-superagent-worktrees/h1`） | feat/h1-gates | b97da20（契约 b0e8714、模板 8ad6df9、门禁 b3da867、golden 3c9b094、e2e d7758b0、文档 9b67568、lint b97da20、收尾 a57001c） | `pnpm check` ✅（**303** tests：protocol 51 / ai 28 / core 51 / vscode 67 / server 55 / testkit 7 / cli 44；typecheck 9 包 + eslint + contract 36 schemas/5 examples/19 routes）；`pnpm e2e` ✅ 8/8（H0 #1/#2/#3/#10 + H1 审批通过/驳回/超时/stale）；`pnpm eval:golden` ✅（24 cases，schema/checklist/reference 100%，人工修改率 11.2% → auto 建议，report 确定性、连跑一致）；`pnpm contract:gen` ✅ | 任务书 §1.1–§1.7 全部落地：模板系统/审批门禁/checklist/工件版本与 stale/autonomy/golden set/测试与文档。偏差：G3 用单角色 consultant（协议 gate 单 role，详见 docs/003 §2.5 v1 说明）；模板版本缺失时回退最高版本（docs/003 §2.7） |
-| H2 | [H2-sap-icf-mime.md](H2-sap-icf-mime.md) | todo | 待认领 | — | — | — | H0 已完成；协议已冻结，DDIC/ICF/MIME 前端可先行；联调需本任务实现 `/hooks/sap` 与 `packages/sap-adapter`。**执行交接见 [H1-H2-execution-handoff.md](H1-H2-execution-handoff.md)**（§3、§4、§6 启动 Prompt；先用 abap-cli skill，只连测试系统） |
+| H1 | [H1-gates-and-templates.md](H1-gates-and-templates.md) | done | h1-agent（worktree `.sap-superagent-worktrees/h1`；Lead 集成验收） | feat/h1-gates | 238fd08 | 分支自测：`pnpm check` ✅ 303 tests、`pnpm e2e` ✅ 8/8、`pnpm eval:golden` ✅ 24 cases（schema/checklist/reference 100%，人工修改率 11.2% → auto）；集成验收（integrate/h1-h2）：`pnpm check` ✅ **350 tests**、`pnpm e2e` ✅ 9/9、`pnpm eval:golden` ✅、`pnpm sap:check` ✅、`pnpm build` ✅ 8/8、curl 手工冒烟 G1→自动任务→G3→G4→done ✅ | 任务书 §1.1–§1.7 全部落地；偏差见「H1 偏差与遗留」 |
+| H2 | [H2-sap-icf-mime.md](H2-sap-icf-mime.md) | done（Phase A；Phase B blocked） | h2-agent（worktree `.sap-superagent-worktrees/h2`；Lead 集成验收） | feat/h2-sap | 0eb35c4 | 分支自测：`pnpm check` ✅ 299 tests、`pnpm e2e` ✅ 5/5、`pnpm sap:check` ✅ 5 pass/1 skip、`pnpm build` ✅；集成验收：SAP 链路已接到 H1 门禁运行时，e2e 9/9（含 SAP 全链路）、`pnpm sap:check` ✅；Phase B 仅只读连通，未做任何 SAP 写操作 | Phase A 交付完成；Phase B 所需人工输入与偏差见「H2 Phase A 偏差与遗留」「Lead 集成验收」 |
 
 ## H0 偏差与遗留（交接给 H1 / H2 / 用户）
 
@@ -20,6 +20,15 @@
 7. **端口**：默认 3080 与开发机上的 DSH Web GUI 冲突；手工冒烟用 `--port`/`SA_HTTP_PORT`。默认值仍按设计保持 3080。
 8. **同工作区并行会话**：`demo/`、README 小改、docs/006 一行为**另一会话/用户**在 2026-11-05 01:05 提交并推送（提交 `02d8689` 进入本分支历史、`f752592` 进入 main），不属 H0 产出；本分支 H0 提交为 ff13648…8b97215。
 9. **推送状态**：H0 分支未推送；本地比 `origin/feat/h0-walking-skeleton` 领先 **17** 个提交（origin 上是早先的骨架/core/protocol 提交 + 并行会话的 demo 提交）。合并建议：走 PR/squash，不直推 main。
+
+## H1 偏差与遗留（交接给 Lead / 用户）
+
+1. **G3 单角色**：任务书 §1.1 写 "consultant+developer 评审"，协议 gate 只有单 role；v1 实现为 `consultant`（开发者证据由 vscode 阶段的 schema+checklist 与版本链体现），docs/003 §2.5 已注明，未扩协议。
+2. **模板版本缺失回退**：Demand 固定 `templateId@version`；registry 优先精确版本，旧版本文件缺失时回退最高已加载版本（docs/003 §2.7 写明）。长期应保留旧版本模板文件，跨重启严格锁定需要 Demand 模板快照（本轮未做）。
+3. **通知渠道**：只落 `notifications` 表 + GET/read API；CLI/VSCode 展示不在 H1 写范围，Teams 留 Hook（S4）。
+4. **门禁超时 job**：到期检查挂在既有 sweeper tick（默认 1s；生产可调），不是单独每小时 job；`timeoutDays` 语义不变。
+5. **observe 工件状态**：observe 草稿以 `in_review` 表示待人工确认（工件状态机无 draft→approved 路径）。
+6. **contracts/examples**：未新增示例；新路由已进 `contracts/openapi.yaml`（36 schemas / 5 examples / 19 routes 快照）。
 
 ## 交接日志
 
@@ -42,3 +51,42 @@
 | 2026-11-05 | H1 子项 6/7：golden set 24 条脱敏 fixture + `evals/thresholds.json` + `packages/ai/src/golden.ts` 评分 + `scripts/eval-golden.mjs`（fake 默认 / BYOK 可切）+ 确定性 `evals/report.json`；report 连跑字节一致，server/ai 均有稳定性测试（commit 3c9b094） |
 | 2026-11-05 | H1 子项 7/7：e2e 新增审批通过/驳回/超时/stale 四条真实链路（d7758b0，`pnpm e2e` 8/8）；docs/003（门禁/模板/checklist 最终语义 + G3 单角色 v1 说明）、docs/005（observe/auto 与 golden 阈值闭环、pdo.yaml 映射）、docs/007（S1 完成状态）、README（S0+S1 状态、门禁 curl、模板、eval:golden）更新（9b67568）；lint 收尾 b97da20 |
 | 2026-11-05 | H1 完成自测（待 Lead 集成验收）：`pnpm check` ✅ 303 tests；`pnpm e2e` ✅ 8/8；`pnpm eval:golden` ✅ 24 cases（schema/checklist/reference 100%，人工修改率 11.2% → auto）；手工冒烟 §2 以集成/e2e 复现：①审批通过/驳回 = `pnpm --filter @sap-superagent/testkit exec vitest run --config vitest.e2e.config.ts e2e/gates.e2e.test.ts` ②模板切换 = `pnpm --filter @sap-superagent/server exec vitest run test/templates.test.ts` ③stale 阻断 = 同 e2e gates（第 4 条） |
+
+| 2026-11-05 | H2 认领（h2-agent，worktree `.sap-superagent-worktrees/h2`，分支 feat/h2-sap @ a9e5e98）；Phase A 开始：sap-adapter（8b850a5）→ testkit fake ICF（9cf9b1a）→ server hooks/writeback（8b6b525）→ sap:reconcile（fb3f0b8）→ 集成/e2e 测试（505c9d7）→ sap/ AFF 源文件 + `pnpm sap:check`（8a2c87f）→ docs 004/008 契约同步（ba7a943） |
+| 2026-11-05 | H2 Phase A 完结自测：`pnpm check` ✅（299 tests，contract 不变）、`pnpm e2e` ✅（5/5，含 SAP 全链路 89ms，总 2.55s）、`pnpm sap:check` ✅ 离线全绿；SAP 只读诊断：`abap doctor`/`abap profile test test` TLS+auth+ADT+ICF ok，`abap deploy status` installed/outdated warning，`abap transport list` 无 open TR |
+| 2026-11-05 | H2 Phase B **blocked**，未执行任何 SAP 写操作；所需人工输入：可达测试系统（只读已通）、目标 package（建议 `ZSA_SUPERAGENT`）、传输请求号、Basis SSO/ICF 服务账号配置、控制平面可达 URL 与 HMAC secret 注入方式（`ZSA_CFG` 只存引用） |
+| 2026-11-05 | Lead 并行阶段：创建 `.sap-superagent-worktrees/{h1,h2}`（分支 feat/h1-gates、feat/h2-sap @ a9e5e98），启动 h1-agent、h2-agent（共享任务 task-1/task-2，写范围互斥）；基线 `pnpm check` 252 tests ✅ |
+| 2026-11-05 | Lead 裁决共享文件：H1 占迁移 v3+、H2 从 v4 起步；`app.ts`/`migrations.ts`/`types.ts` 只追加 + `// --- H1/H2 ---` 标记；H2 Phase B 写操作 blocked、只读诊断可做 |
+| 2026-11-05 | H1 完成（feat/h1-gates @ 238fd08）：303 tests / e2e 8/8 / eval:golden 24 cases；H2 完成 Phase A（feat/h2-sap @ 0eb35c4）：299 tests / e2e 5/5 / sap:check 5 pass；两分支均未 push |
+| 2026-11-05 | Lead 集成：`integrate/h1-h2` merge `feat/h2-sap`（冲突 3 处按 §4 裁决），commit `bd37fa1` 把 SAP 审批接到 H1 门禁运行时并适配 SAP 测试/e2e；集成门禁 350 tests / e2e 9/9 / eval:golden / sap:check / build 全绿；curl 手工冒烟 G1→自动任务→G3→G4→done 通过；H1/H2 标记 done（H2 Phase B blocked） |
+
+## H2 Phase A 偏差与遗留（交接给 H1 / Lead / 用户）
+
+1. **Phase A 交付**：`packages/sap-adapter`（client/mapping/signature/reconcile，31 单测）、`packages/testkit` fake ICF（6 路由 + 超时/409/401/坏 JSON 注入 + HMAC 签名投递）、`packages/server` `/hooks/sap`（HMAC ±5min、`X-SA-Delivery` 幂等、003 §4.5 五类事件 + `hook.receipt`）、`sap-writeback` worker（事件→outbox→PATCH，2s 指数退避≤5min、5 次、4xx 死信、409 重拉重放）、`sap:reconcile`、`sap/` abapGit+AFF 源文件（6 DDIC 表 / 3 类 / ICF 节点 / MIME UI / job / ABAP Unit）、`pnpm sap:check`。
+2. **迁移编号**：按 Lead 裁决 H2 使用 **v4**（`sap-deliveries`/`sap_sync_state`/`sap_integration_state` + outbox `last_error/sent_at`），H1 占 v3+；仅追加，未改 v1/v2。集成时若与 H1 冲突由 Lead 重排。
+3. **共享文件只做加法**：`http/app.ts`（一行注册 + import）、`types.ts`（`ServerContext.sap?` + import）、`server.ts`（env 解析 + worker 启停 + ctx 字段，均在 `// --- H2 ---` 注释块内）、`db/migrations.ts`（v4 一条）。`config.ts`/`routes/*`/`route-utils.ts` 未改；写回 outbox 由 worker 扫描事件表生成，而不是改 `publish()`。
+4. **未改 packages/protocol**：入站 webhook 投递幂等记录放新表 `sap_deliveries`；事件类型沿用协议既有枚举（`demand.created/updated/cancelled`、`artifact.*`、`stage.*`、`approval.decided`）。`contracts/` 无 diff（27/5/19 不变）。
+5. **门禁语义 H2 临时实现**：`artifact.approved/rejected` 从 SAP 回来后，若阶段 `waiting_human` → done + 推进下一阶段；`rejected` 把阶段重开为新 attempt（H0 状态机 `done` 终态，这里按 H1 合并前的临时行为绕过）；下一阶段输入工件不齐时按人工 override 强制 ready。H1 合并后应由其审批/门禁运行时替换（代码内已标 `H1 owns the final gate semantics`）。
+6. **对账**：`sap:reconcile` 用 `CHANGED_AT` 游标只读对比；因未持久化"上次投影状态"，优先用反向状态映射判断差异（可能把"审批中"与"开发中"这类同源 in_progress 情况视为一致），差异报告不自动修复。
+7. **SAP 侧未经真机语法检查**：Phase B blocked，ABAP 源文件只经过 `abap validate:aff`（JSON/companion）与 `abap check content`（离线结构校验）；`cl_abap_hmac`/`/ui2/cl_json`/`cl_system_uuid`/`cl_mime_repository_api` 等 API 需在目标 release 的 `abap check syntax` + ABAP Unit 中复核（`sap/README.md` §Phase B）。`ZSA_DEMAND` 新增 `VERSION` 字段用于 `If-Match`（已补 docs/004 §2/§2.2）。
+8. **HMAC 密钥引用**：`ZSA_CFG` 只存 `CONTROL_PLANE_URL` 与 `HMAC_SECRET_REF`；具体 SSF/`CL_ABAP_SEC` 注入方式留待 Phase B 由 Basis 确认（`ZCL_ZSA_EVENT_PUSH=>hmac_secret` 有 TODO 说明）。
+9. **e2e 与模板耦合（集成提醒）**：`packages/testkit/e2e/sap.e2e.test.ts` 当前基于 H0 两阶段 `default` 模板断言（AI 阶段自动 done、dev 阶段自动 ready、手建任务入通用箱）。H1 的三阶段 + 门禁模板合并后需要适配；Lead 已确认由其裁决集成适配，本分支以自身基线跑绿为准。
+10. **未做的可选项**：审批到期提醒 job（任务书标注"可后置"）；`GET /hooks` 通用管理面与 replay（008 §6 属 S4，本任务仅 SAP 一条 + `/hooks/sap/status`）；SAP 侧对 `If-Match` 的 ETag 变体（真实系统用 `VERSION`）。
+
+## Lead 集成验收（H1+H2）
+
+- **基线决策**：按 [H1-H2-execution-handoff.md](H1-H2-execution-handoff.md) §0.1 的**备选方案**，H1/H2 分支都从 H0 基线 `a9e5e98`（`feat/h0-walking-skeleton` 含交接文档）开出；**未把 H0 合入 `main`**（main 只接受 PR+CI，属用户/团队流程。合并建议：H0→main 先走 PR/squash，H1/H2 再 rebase/PR）。集成分支 `integrate/h1-h2`。
+- **worktree 隔离**：`.sap-superagent-worktrees/h1`（feat/h1-gates）、`.sap-superagent-worktrees/h2`（feat/h2-sap）、`.sap-superagent-worktrees/integration`（integrate/h1-h2）；两个执行 Agent 全程未共用工作目录、未 push、未动 main。
+- **合并与冲突裁决**：`feat/h2-sap` merge 进 `integrate/h1-h2`，冲突 3 处：`packages/server/src/db/migrations.ts`（H1 v3 在前、H2 v4 在后，v1/v2 未动）、`packages/server/src/http/app.ts`（H1 三组路由 + H2 `registerSapRoutes` 并存）、`handoffs/STATUS.md`（两行/两段日志/两节偏差合并）；`types.ts`/`server.ts` 自动合并。
+- **语义集成修复**（commit `bd37fa1`）：SAP `artifact.approved/rejected` 不再走 H2 临时门禁逻辑，改为解析绑定 `(artifactId, artifactVersion)` 的 H1 pending Approval，调用 `decideApprovalApprove/decideApprovalReject`（已决门禁重复投递为幂等 no-op）；删除 H2 重复的审批 SQL / 阶段推进片段与重复迁移假设；SAP 集成测试与 e2e 适配 3 阶段 + 门禁模板（G1 停在 waiting_human、SAP 决策推进、驳回开新 attempt、409 重拉重放按新语义断言）。`contracts/` 合并后仍为 36 schemas / 5 examples / 19 routes（H2 未改 protocol）。
+- **集成门禁**（`integrate/h1-h2` @ `bd37fa1` + 本节收尾提交）：
+  - `pnpm install --frozen-lockfile` ✅（合并后 lockfile 一致）
+  - `pnpm check` ✅ **350 tests**（protocol 51 / ai 28 / core 51 / vscode 67 / server 55 / testkit 23 / cli 44 / sap-adapter 31）+ typecheck 9 包 + eslint + contract check
+  - `pnpm e2e` ✅ **9/9**（H0 #1/#2/#3/#10 四条 + H1 审批通过/驳回/超时/stale 四条 + H2 SAP Phase A 全链路一条；进程内 fake ICF，3.05s）
+  - `pnpm eval:golden` ✅ 24 cases：schema/checklist/reference 100%，人工修改率 11.2% → auto 建议
+  - `pnpm sap:check` ✅ 5 pass / 1 skip（AFF `abap validate:aff` 17/17、`abap check content` 6 文件、无凭据/地址/TR；syntax 按设计离线跳过）
+  - `pnpm build` ✅ 8/8
+  - **curl 手工冒烟** ✅：healthz → `GET /templates`（default 3 阶段/3 门禁、pdo 6 阶段/5 门禁）→ 建 default Demand → G1 前停 `waiting_human`（工件 `in_review`、Approval 绑定 v1）→ `GET /approvals?assignee=me` → approve G1（重复决策 409）→ 自动生成 vscode 任务（`requiredRoles=["developer"]`，context.md 614 字符）→ 注册/心跳/claim → 提交 `code_change` 工件 → complete → G3 approve → G4 approve → demand `done`（3 个工件 approved，事件链完整）→ 通知 6 条未读 → 另建 pdo Demand 6 阶段且原 default Demand 不受影响。
+- **未推送**：H1/H2/集成三个分支都未 push；建议按 docs/006 走 PR（H0→main 先合并，再 H1/H2 各自 PR 或集成分支整体 PR）。
+- **待用户/人工输入**：H2 Phase B（测试系统 package/TR、Basis SSO/ICF 服务账号、控制平面可达 URL + HMAC secret 注入方式）；H0→main 合入方式；真实 VSCode Extension Host 冒烟（发布前）。
+

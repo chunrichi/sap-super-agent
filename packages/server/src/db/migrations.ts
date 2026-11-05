@@ -227,4 +227,40 @@ CREATE INDEX idx_notifications_unread ON notifications (read_at, created_at);
 CREATE INDEX idx_notifications_demand ON notifications (demand_id, created_at);
 `,
   },
+  // --- H2: SAP ICF + MIME integration (docs/004 §3, handoffs/H2 §1.5) ---
+  // Append-only: covers inbound webhook idempotency, the SAP optimistic
+  // concurrency version, the writeback worker cursor and outbox bookkeeping.
+  // Numbering: H1 owns v3, so the SAP block starts at v4 (Lead adjudication).
+  {
+    version: 4,
+    name: 'sap-icf-integration',
+    sql: `
+CREATE TABLE sap_deliveries (
+  delivery_id TEXT PRIMARY KEY,
+  event_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  demand_id TEXT,
+  received_at TEXT NOT NULL,
+  state TEXT NOT NULL,
+  result TEXT NOT NULL
+);
+CREATE INDEX idx_sap_deliveries_received ON sap_deliveries (received_at);
+
+CREATE TABLE sap_sync_state (
+  demand_id TEXT PRIMARY KEY,
+  sap_version INTEGER NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE sap_integration_state (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+ALTER TABLE outbox ADD COLUMN last_error TEXT;
+ALTER TABLE outbox ADD COLUMN sent_at TEXT;
+CREATE INDEX idx_outbox_target_status ON outbox (target, status, next_attempt_at);
+`,
+  },
 ];

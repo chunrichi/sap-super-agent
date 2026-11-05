@@ -17,7 +17,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "build": "tsc -p tsconfig.build.json",
-    "check": "pnpm run typecheck && pnpm run test"
+    "check": "pnpm run typecheck && pnpm run test",
+    "sap:reconcile": "tsx src/sap-reconcile.ts"
   },
-  "dependencies": {"@sap-superagent/protocol":"workspace:*","@sap-superagent/core":"workspace:*","@sap-superagent/ai":"workspace:*","fastify":"^5.12.8","ws":"^8.22.1"}
+  "dependencies": {"@sap-superagent/protocol":"workspace:*","@sap-superagent/core":"workspace:*","@sap-superagent/ai":"workspace:*","fastify":"^5.12.8","ws":"^8.22.1","@sap-superagent/sap-adapter":"workspace:*"}
 }

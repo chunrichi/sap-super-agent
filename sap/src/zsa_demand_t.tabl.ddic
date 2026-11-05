@@ -1,0 +1,12 @@
+@EndUserText.label : 'ZSA demand long text'
+@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zsa_demand_t {
+  key client           : abap.clnt not null;
+  key demand_id        : abap.char(32) not null;
+  key lang             : abap.lang not null;
+  description          : abap.string(0);
+  acceptance           : abap.string(0);
+}

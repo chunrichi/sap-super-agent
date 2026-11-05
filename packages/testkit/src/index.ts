@@ -7,3 +7,5 @@ export * from './http.js';
 export * from './fake-executor.js';
 export * from './fake-sap.js';
 export * from './in-memory-repository.js';
+// --- H2: SAP ICF Phase A fake (docs/004 §3.2, handoffs/H2 §1.6) ---
+export * from './fake-icf-server.js';

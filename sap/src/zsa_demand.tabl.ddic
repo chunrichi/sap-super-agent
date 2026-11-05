@@ -1,0 +1,25 @@
+@EndUserText.label : 'ZSA demand master'
+@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zsa_demand {
+  key client           : abap.clnt not null;
+  key demand_id        : abap.char(32) not null;
+  demand_no            : abap.char(12) not null;
+  title                : abap.char(200) not null;
+  req_user             : abap.char(12) not null;
+  org_unit             : abap.char(40);
+  priority             : abap.char(10) not null;
+  template_id          : abap.char(40) not null;
+  template_version     : abap.numc(4) not null;
+  repo_key             : abap.char(64);
+  project_key          : abap.char(40);
+  status               : abap.char(20) not null;
+  status_text          : abap.char(40) not null;
+  stage_key            : abap.char(30);
+  version              : abap.int4 not null;
+  created_at           : abap.timestampl not null;
+  changed_at           : abap.timestampl not null;
+  sap_note             : abap.char(255);
+}

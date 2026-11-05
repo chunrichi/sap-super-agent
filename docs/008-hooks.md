@@ -44,7 +44,7 @@ Hook 是对 JIRA / CHARM / Confluence / Teams 等外部系统的**唯一扩展�
 | CHARM TR | `hook.charm.tr.ensure` | 开发说明确认后（G2/G3） | `targetSystem`, `client`, `owner`, `descriptionRef`, `artifacts[]`, `demandNo` | `demandId:charm:<targetSystem>:<sha256(code_change)>` | **非幂等**：先按业务键查询再建；仍未定则转人工 Task；TR 号回写；每日对账 |
 | Confluence | `hook.confluence.page.upsert` | 归档阶段完成 / 发布确认后 | `space`, `parentId`, `title`, `bodyRef`, `labels[]`, `demandNo` | `demandId:confluence:<pageKey>:<version>` | upsert 可安全重试；发布前需 G5；按 pageId 对账 |
 | Teams 通知 | `hook.teams.notify` | 待人工任务、门禁、超时升级 | `channel`, `template`, `demandNo`, `deepLink`, `mention` | `eventId` | 通知可丢（TTL 后放弃）但留审计；429 按 `Retry-After`；默认由 SAP 内通知替代 |
-| SAP 回写 | `hook.sap.writeback` | 每次阶段/门禁/状态变化 | `demandId`, `status`, `artifactRef`, `approvalResult` | `demandId:writeback:<version>` | 乐观并发 `If-Match`；409 重拉后重放；每日对账 |
+| SAP 回写 | `hook.sap.writeback` | 每次阶段/门禁/状态变化 | `demandId`, `status`, `artifactRef`, `approvalResult` | `demandId:writeback:<version>` | 乐观并发 `If-Match: <ZSA_DEMAND-VERSION>`；409 重拉后重放；每日对账（`pnpm sap:reconcile`） |
 
 ## 4. 入站回执
 
@@ -64,7 +64,7 @@ Hook 是对 JIRA / CHARM / Confluence / Teams 等外部系统的**唯一扩展�
 
 | 类别 | 判定 | 处理 |
 | --- | --- | --- |
-| 可重试 | 网络错误、5xx、429、超时 | 指数退避：控制平面 2s 起、上限 5min、最多 5 次；SAP outbox 按 004 §3.3 |
+| 可重试 | 网络错误、5xx、429、超时 | 指数退避：控制平面 2s 起、上限 5min、最多 5 次（S2 实现：`SA_SAP_WRITEBACK_*` 可调）；SAP outbox 按 004 §3.3 |
 | 永久失败 | 4xx（字段/权限/校验错误） | 进入死信，通知负责人；阶段不因此失败，由人决定跳过或修正 |
 | 非幂等动作 | CHARM 建 TR 等 | 先查后建；无法确认时转人工，不自动重试 |
 | 阶段取消 | 需求取消 / 阶段退回 | 未发送的 Hook 标记 `cancelled`；已发送的补发关闭/留言动作 |
@@ -86,6 +86,8 @@ hooks:
 
 - 出站队列与 003 的事件日志共用 outbox 机制；每次尝试写事件 `hook.attempted` / `hook.delivered` / `hook.dead`。
 - 管理命令：`GET /hooks`（状态与队列深度）、`POST /hooks/{id}/replay`（按 eventId 重放，幂等）。
+  S2 已实现 SAP 一条：`GET /hooks/sap/status`（admin，输出 `enabled.outbound/inbound` 与 outbox
+  `pending/sent/dead/lastError`）；对账命令 `pnpm sap:reconcile`（只读差异报告）。
 - 死信与对账结果进入运维面板与每日报告；不默认发聊天通知。
 - 具体适配器（JIRA/CHARM/Confluence/Teams）按本契约实现，放 `packages/sap-adapter` 之外的独立包或企业私有仓库，避免开源仓库绑定某家企业系统。
 

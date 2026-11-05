@@ -1,0 +1,7 @@
+{
+  "formatVersion": "1",
+  "header": {
+    "description": "ZSA outbound event outbox (at-least-once push)",
+    "originalLanguage": "en"
+  }
+}

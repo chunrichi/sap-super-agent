@@ -330,25 +330,30 @@ describe('control-plane REST surface', () => {
     });
     try {
       await createDemandWithArtifact(resyncServer);
-      const before = await readEvents(resyncServer);
-      expect(before.lastSeq).toBeGreaterThan(1);
-      await new Promise((resolveWait) => setTimeout(resolveWait, 200));
-
-      const stale = await api<{
-        error: { code: string; details: { earliestSeq: number; lastSeq: number } };
-      }>(resyncServer, '/api/v1/events?after=0', { token: resyncServer.userToken });
-      expect(stale.status).toBe(409);
+      // The retention window is deliberately tiny: poll until the API actually
+      // asks for a resync instead of assuming a fixed wall-clock budget (the
+      // fixed sleep was flaky on loaded CI runners).
+      const stale = await waitFor(
+        async () => {
+          const response = await api<{
+            error: { code: string; details: { earliestSeq: number; lastSeq: number } };
+          }>(resyncServer, '/api/v1/events?after=0', { token: resyncServer.userToken });
+          return response.status === 409 ? response : undefined;
+        },
+        { label: 'resync_required', timeoutMs: 4_000, intervalMs: 30 },
+      );
       expect(stale.body.error.code).toBe('resync_required');
       expect(stale.body.error.details.earliestSeq).toBeGreaterThan(1);
+      const lastSeqBeforeResync = stale.body.error.details.lastSeq;
 
       const caughtUp = await api<{ events: EventEnvelope[]; lastSeq: number }>(
         resyncServer,
-        `/api/v1/events?after=${before.lastSeq}`,
+        `/api/v1/events?after=${lastSeqBeforeResync}`,
         { token: resyncServer.userToken },
       );
       expect(caughtUp.status).toBe(200);
       expect(caughtUp.body.events).toEqual([]);
-      expect(caughtUp.body.lastSeq).toBe(before.lastSeq);
+      expect(caughtUp.body.lastSeq).toBe(lastSeqBeforeResync);
     } finally {
       await resyncServer.dispose();
     }

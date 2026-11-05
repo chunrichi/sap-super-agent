@@ -57,11 +57,11 @@ sap-superagent/
 │     └─ web/                   # 可选运维面板
 ├─ templates/                   # 阶段模板（default / pdo），YAML + schema 校验
 ├─ prompts/                     # 服务端 AI 提示词覆盖层（包内为默认，这里按 key 合并）
-├─ sap/                         # ABAP 侧 abapGit 仓库（独立部署单元）
-│  ├─ .abapgit.xml
+├─ sap/                         # ABAP 侧对象源（abap-cli AFF，独立交付单元）
 │  ├─ src/                      # Z 对象源码（DDIC / ICF handler / MIME Web / outbox / jobs）
+│  ├─ ui/                       # MIME 静态资源（/zsa/ui）
 │  ├─ tests/                    # ABAP Unit
-│  └─ README.md                 # 导入与升级步骤
+│  └─ README.md                 # abap-cli 创建/推送/激活与验收步骤
 ├─ examples/
 │  ├─ local/                    # M1：一条命令启动的示例配置
 │  ├─ hooks.yaml                # Hook 配置示例（见 008）
@@ -76,7 +76,7 @@ sap-superagent/
 
 - 包名统一 `@sap-superagent/*`，VSCode 扩展与 SAP 包名带前缀避免 Marketplace / SAP 命名冲突。
 - `contracts/` 是生成物但入库：协议变更在 PR 里可 review、可 diff。
-- `sap/` 是独立 abapGit 仓库结构，**不**参与 pnpm workspace；发布时单独打 tag（`sap-v*`）。
+- `sap/` 是独立交付单元（abap-cli AFF），**不**参与 pnpm workspace；S2 Phase B 用本地包 `$ZSA` + abap-cli 建对象，**abapGit 本轮不实现**；发布时单独打 tag（`sap-v*`）。
 - `docs/` 编号文档是权威设计；`docs/reference/` 是调研材料，允许过期，改动不要求同步。
 - `HANDOFF.md` + `handoffs/` 是执行交接层：只写“现在做什么/怎么验收”，不重复设计；实现偏离设计时先改 docs。
 - `templates/` 只放阶段模板与 schema 引用；模板是配置，不是代码分支。
@@ -158,7 +158,7 @@ Refs: #12
 - changesets 管理 CHANGELOG 与版本；发布由 GitHub Actions 在 tag 上执行：
   - npm：`protocol`、`core`、`server`、`cli`、`sap-adapter`；
   - GitHub Release：VSIX、Docker 镜像 digest、SAP 包说明；
-  - `sap/` 单独 tag `sap-v0.1.0`，附 abapGit 导入说明。
+  - `sap/` 单独 tag `sap-v0.1.0`，附 abap-cli 建对象说明（本地包 `$ZSA`，无 TR）。
 - 发布节奏：S0–S1 期间按需；v0.1.0 = walking skeleton 可演示；v1.0.0 = M2 + SAP + 门禁 + 一个 Hook 示例可用。
 
 ### 3.5 PR 与 Issue

@@ -60,14 +60,14 @@
 
 **任务书**：[H2-sap-icf-mime.md](H2-sap-icf-mime.md)。**规格**：docs/004、docs/003 §4.5、docs/008、docs/009 #6/#7/#11/#12。
 **写范围**：`sap/**`、`packages/sap-adapter/**`、`packages/server/src/hooks/sap*`、`packages/server/src/workers/sap-*`；需要改共享文件（`http/app.ts`、`db/migrations.ts`、`types.ts`、protocol/contracts）时与 H1 串行并在 STATUS 登记。
-**SAP 侧强制流程**：先加载 `.agents/skills/abap-cli/SKILL.md`（SAP 任务不加载技能不许动手）；`abap doctor`、`abap deploy status`；**只连测试系统**（本机 `.abap.json` 有 test profile，禁止提交）；传输请求由使用者提供；不自动激活生产。
+**SAP 侧强制流程**：先加载 `.agents/skills/abap-cli/SKILL.md`（SAP 任务不加载技能不许动手）；`abap doctor`、`abap deploy status`；**只连测试系统**（本机 `.abap.json` 有 test profile，禁止提交）；**用户决策（2026-11-05）：目标 package 用本地包 `$ZSA`（无 TR，对象仅测试系统生效）；全部用 abap-cli；abapGit 本轮不实现**；不自动激活生产。
 **Phase A（无 SAP 系统，CI 必过）——先做：**
 1. `packages/testkit` 增 fake ICF server：需求列表/详情/创建/PATCH/审批/health 六条路由 + 故障注入（超时/409/401/坏 JSON）。
 2. `packages/sap-adapter`：`client.ts`（fetch、超时/重试/错误映射）、`mapping.ts`（控制面状态 ↔ SAP `STATUS` 投影表）、`signature.ts`（HMAC `X-SA-Signature`/`X-SA-Timestamp`/`X-SA-Delivery`）、`reconcile.ts`（`CHANGED_AT` 游标差异报告）。
 3. `packages/server`：`src/hooks/sap.ts`（`POST /hooks/sap`：HMAC + 幂等键 + 003 §4.5 事件类型）、`src/workers/sap-writeback.ts`（outbox 消费、2s 起指数退避至 5min、最多 5 次、死信、`If-Match` 409 重拉重放）、`scripts/sap-check.mjs` + `pnpm sap:check`、（可选）`sap:reconcile` 命令。
 4. 配置：`SA_SAP_BASE_URL`、`SA_SAP_SERVICE_USER/PASSWORD`（或 token）、`SA_SAP_HOOK_SECRET`；缺失时 SAP 集成自动禁用，不影响 H0/H1。
 5. 集成测试覆盖 009 #6/#7/#11/#12，并加 `abap validate:aff` 离线校验（无系统时跳过并说明）。
-**Phase B（有测试系统，人工执行并记录）：** 按任务书 §1.6 建 DDIC（`ZSA_DEMAND/_T`、`ZSA_ARTIFACT`、`ZSA_APPROVAL`、`ZSA_EVENT_OUT`、`ZSA_CFG`）、`ZCL_ZSA_HTTP_HANDLER`/`ZCL_ZSA_JSON`/`ZCL_ZSA_EVENT_PUSH`、ICF 节点 `ZSA_API`、MIME `/zsa/ui` 三个视图、outbox 推送 job；`sap/` 按 abapGit 结构（`.abapgit.xml` + 导入顺序 README），同时保留 abap-cli 可推送格式；ABAP Unit 覆盖 outbox/退避/HMAC/映射/路由；验收 5 条（5 分钟入控制平面、1 分钟回写、重试不重复建单、未绑定需求进通用任务箱、SSO 页面可用）；记录对象/TR/curl/截图，不提交 SAP 地址/凭据/TR。
+**Phase B（有测试系统，人工执行并记录）：** 按任务书 §1.6 用 **abap-cli** 建 DDIC（`ZSA_DEMAND/_T`、`ZSA_ARTIFACT`、`ZSA_APPROVAL`、`ZSA_EVENT_OUT`、`ZSA_CFG`）、`ZCL_ZSA_HTTP_HANDLER`/`ZCL_ZSA_JSON`/`ZCL_ZSA_EVENT_PUSH`、ICF 节点 `ZSA_API`、MIME `/zsa/ui` 三个视图、outbox 推送 job（package 一律 `$ZSA`，无 TR）；`sap/` 只维护 abap-cli AFF 可推送格式（**abapGit 本轮不实现**）；ABAP Unit 覆盖 outbox/退避/HMAC/映射/路由；验收 5 条（5 分钟入控制平面、1 分钟回写、重试不重复建单、未绑定需求进通用任务箱、SSO 页面可用）；记录对象/TR/curl/截图，不提交 SAP 地址/凭据/TR。
 **验收命令**：`pnpm check`、`pnpm e2e`（Phase A 全链路）、`pnpm sap:check`；Phase B 按任务书人工验收并写入 STATUS 与最终报告。
 
 ## 4. H1/H2 并行协调规则（重要）
@@ -98,7 +98,7 @@
 > 你在 `/Users/lei/ai_space/sap_super_agent` 工作（或从 H0 基线新建的 worktree）。先读 `HANDOFF.md`、`handoffs/STATUS.md`、`handoffs/H0-walking-skeleton.md`、`handoffs/H1-gates-and-templates.md`、`handoffs/H1-H2-execution-handoff.md`，然后在 `handoffs/STATUS.md` 认领 H1。严格按任务书写范围与验收标准执行；跨包契约先改 `packages/protocol` + `docs/003` 再实现（`pnpm contract:gen`）。不要动 `sap/**`、`packages/sap-adapter`、`packages/server/src/hooks/`、`packages/server/src/workers/sap-*`（属于 H2）。每完成一个子项更新 STATUS；用 Conventional Commits + `git commit -s`；不要直推 main、不要 force push。完成时报告：完成项、`pnpm check`/`pnpm e2e`/`pnpm eval:golden` 结果、偏差、遗留。
 
 ### H2 Agent（S2）
-> 你在 `/Users/lei/ai_space/sap_super_agent` 工作（或从 H0 基线新建的 worktree）。先读 `HANDOFF.md`、`handoffs/STATUS.md`、`handoffs/H0-walking-skeleton.md`、`handoffs/H2-sap-icf-mime.md`、`handoffs/H1-H2-execution-handoff.md`，然后认领 H2。**动手前必须加载 `.agents/skills/abap-cli/SKILL.md`**；只连测试系统，不提交 SAP 地址/凭据/TR。先交付 Phase A（fake ICF + `packages/sap-adapter` + `/hooks/sap` + sap writeback + `pnpm sap:check`，覆盖 009 #6/#7/#11/#12），有测试系统时再按任务书 §1.6 执行 Phase B 并记录对象/TR/curl/截图。H1 占用的文件（approvals/templates/core 集成）不要改；共享文件按交接文档 §4 串行协调。Conventional Commits + `git commit -s`；不直推 main、不 force push。完成时报告：完成项、Phase A 命令输出、Phase B 记录、偏差、遗留。
+> 你在 `/Users/lei/ai_space/sap_super_agent` 工作（或从 H0 基线新建的 worktree）。先读 `HANDOFF.md`、`handoffs/STATUS.md`、`handoffs/H0-walking-skeleton.md`、`handoffs/H2-sap-icf-mime.md`、`handoffs/H1-H2-execution-handoff.md`，然后认领 H2。**动手前必须加载 `.agents/skills/abap-cli/SKILL.md`**；只连测试系统，不提交 SAP 地址/凭据/TR。先交付 Phase A（fake ICF + `packages/sap-adapter` + `/hooks/sap` + sap writeback + `pnpm sap:check`，覆盖 009 #6/#7/#11/#12），再按任务书 §1.6 执行 Phase B：用 abap-cli 在本地包 `$ZSA`（无 TR）建对象/激活/ABAP Unit，记录对象清单、命令输出与 curl（abapGit 暂不投入）。H1 占用的文件（approvals/templates/core 集成）不要改；共享文件按交接文档 §4 串行协调。Conventional Commits + `git commit -s`；不直推 main、不 force push。完成时报告：完成项、Phase A 命令输出、Phase B 记录、偏差、遗留。
 
 ## 7. 交接状态
 

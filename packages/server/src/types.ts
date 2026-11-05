@@ -24,6 +24,8 @@ export interface ServerOptions {
   env?: NodeJS.ProcessEnv;
   /** WS keep-alive ping interval (default 20s). */
   wsPingMs?: number;
+  // --- H1: gate timeout override in ms (tests / M1 ops; default per template) ---
+  gateTimeoutMs?: number;
 }
 
 export interface RunningServer {
@@ -50,6 +52,8 @@ export interface ServerConfig {
   logger: boolean;
   version: string;
   wsPingMs: number;
+  // --- H1: null = use the template's timeoutDays ---
+  gateTimeoutMs: number | null;
 }
 
 /** Shared, immutable-per-server services passed to routes and workers. */

@@ -10,6 +10,12 @@ const FENCED_JSON = /```(?:json)?\s*([\s\S]*?)```/i;
 
 export class StageOutputError extends Error {
   readonly rawText: string;
+  /** Model that produced the invalid output (filled in by the stage runner). */
+  model: string | undefined;
+  /** Usage/cost of the failed call, so the run ledger can still account for it. */
+  tokens: number | undefined;
+  costUsd: number | undefined;
+  promptVersion: string | undefined;
 
   constructor(message: string, rawText: string) {
     super(message);

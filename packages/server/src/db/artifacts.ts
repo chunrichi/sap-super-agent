@@ -256,3 +256,57 @@ export function artifactChainsForDemand(
   }
   return chains;
 }
+
+// --- H1: artifact version chains, stale propagation and supersede -------------
+
+/** Newest artifact of a kind for a demand (kinds are unique per template). */
+export function findArtifactByKind(
+  db: DatabaseSync,
+  demandId: string,
+  kind: ArtifactKind,
+): Artifact | null {
+  const row = db
+    .prepare('SELECT * FROM artifacts WHERE demand_id = ? AND kind = ? ORDER BY created_at DESC LIMIT 1')
+    .get(demandId, kind) as unknown as ArtifactRow | undefined;
+  return row === undefined ? null : rowToArtifact(row);
+}
+
+/** Artifact produced by a stage (used for downstream stale propagation). */
+export function findArtifactForStage(
+  db: DatabaseSync,
+  demandId: string,
+  stageKey: string,
+): Artifact | null {
+  const row = db
+    .prepare(
+      'SELECT * FROM artifacts WHERE demand_id = ? AND stage_key = ? ORDER BY created_at DESC LIMIT 1',
+    )
+    .get(demandId, stageKey) as unknown as ArtifactRow | undefined;
+  return row === undefined ? null : rowToArtifact(row);
+}
+
+export function updateArtifact(db: DatabaseSync, artifact: Artifact): void {
+  db.prepare(
+    'UPDATE artifacts SET state = ?, current_version = ?, title = ?, updated_at = ? WHERE id = ?',
+  ).run(artifact.state, artifact.currentVersion, artifact.title, artifact.updatedAt, artifact.id);
+}
+
+export function listVersionsForArtifact(db: DatabaseSync, artifactId: string): ArtifactVersion[] {
+  const rows = db
+    .prepare('SELECT * FROM artifact_versions WHERE artifact_id = ? ORDER BY version ASC')
+    .all(artifactId) as unknown as ArtifactVersionRow[];
+  return rows.map(rowToArtifactVersion);
+}
+
+export function markArtifactVersionStale(
+  db: DatabaseSync,
+  artifactId: string,
+  version: number,
+  stale: boolean,
+): void {
+  db.prepare('UPDATE artifact_versions SET stale = ? WHERE artifact_id = ? AND version = ?').run(
+    stale ? 1 : 0,
+    artifactId,
+    version,
+  );
+}

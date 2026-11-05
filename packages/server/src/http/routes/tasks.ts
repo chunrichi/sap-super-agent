@@ -20,11 +20,13 @@ import {
   type Artifact,
   type ArtifactVersion,
   type Assignment,
+  type StageRun,
   type Task,
   type TaskContext,
 } from '@sap-superagent/protocol';
 import {
   buildTaskContextMarkdown,
+  canTransitionStageRun,
   canTransitionTask,
   evaluateClaimEligibility,
   findStage,
@@ -45,14 +47,16 @@ import {
   updateAssignmentLease,
 } from '../../db/assignments.js';
 import {
+  findArtifactByKind,
   insertArtifact,
   insertArtifactVersion,
   latestVersionsByKind,
   listArtifactsForDemand,
+  updateArtifact,
 } from '../../db/artifacts.js';
 import { getDemand } from '../../db/demands.js';
 import { getExecutor } from '../../db/executors.js';
-import { getStageRun } from '../../db/stages.js';
+import { getStageRun, updateStageRun } from '../../db/stages.js';
 import { addLastHolder, getTask, listTasksByState, updateTask } from '../../db/tasks.js';
 import { writeTransaction, type TransactionContext } from '../../db/transaction.js';
 import {
@@ -67,6 +71,11 @@ import { requireExecutor, requireKinds } from '../auth.js';
 import { nowIso, paramId, publish } from '../route-utils.js';
 import { parseInput, sendValidated } from '../validate.js';
 import { requireActiveLease } from '../../lease.js';
+import {
+  completeVscodeTaskStage,
+  failVscodeTaskStage,
+  propagateStaleForArtifact,
+} from '../../stage-engine.js';
 import { listEligiblePendingTasks } from '../../offers.js';
 import type { ServerContext } from '../../types.js';
 
@@ -335,6 +344,32 @@ export function registerTaskRoutes(app: FastifyInstance, ctx: ServerContext): vo
           },
           demandId: task.demandId,
         });
+        // --- H1: a claimed stage task moves its StageRun ready -> running ---
+        if (task.stageRunId !== null) {
+          const stageRun = getStageRun(ctx.db, task.stageRunId);
+          if (stageRun !== null && canTransitionStageRun(stageRun.status, 'running')) {
+            const running: StageRun = {
+              ...stageRun,
+              status: 'running',
+              startedAt: tx.now,
+              updatedAt: tx.now,
+            };
+            updateStageRun(ctx.db, running);
+            tx.append({
+              type: 'stage.started',
+              subject: { type: 'stage_run', id: running.id },
+              data: {
+                stageRunId: running.id,
+                demandId: task.demandId,
+                stageKey: running.stageKey,
+                attempt: running.attempt,
+                executorKind: running.executorKind,
+                executorId: claims.executorId,
+              },
+              demandId: task.demandId,
+            });
+          }
+        }
         return { task: claimed, leaseExpiresAt };
       });
       return sendValidated(reply, claimTaskResponseSchema, {
@@ -411,8 +446,10 @@ export function registerTaskRoutes(app: FastifyInstance, ctx: ServerContext): vo
       if (checksum !== body.checksum) {
         throw badRequest(`checksum mismatch: declared ${body.checksum}, computed ${checksum}`);
       }
-      const artifactId = newUlid();
-      const versionNumber = 1;
+      // --- H1: revisions of the same kind create new immutable versions ---
+      const existing = findArtifactByKind(ctx.db, lease.task.demandId, body.kind);
+      const artifactId = existing === null ? newUlid() : existing.id;
+      const versionNumber = existing === null ? 1 : existing.currentVersion + 1;
       const contentRef = artifactContentRef(artifactId, versionNumber);
       writeArtifactBytes(ctx.config.stateDir, artifactId, versionNumber, bytes);
       const stageRun =
@@ -428,10 +465,11 @@ export function registerTaskRoutes(app: FastifyInstance, ctx: ServerContext): vo
           state: 'generated',
           currentVersion: versionNumber,
           title: body.title ?? null,
-          createdAt: tx.now,
+          createdAt: existing === null ? tx.now : existing.createdAt,
           updatedAt: tx.now,
         };
-        insertArtifact(ctx.db, artifact);
+        if (existing === null) insertArtifact(ctx.db, artifact);
+        else updateArtifact(ctx.db, artifact);
         const version: ArtifactVersion = {
           artifactId,
           version: versionNumber,
@@ -464,9 +502,13 @@ export function registerTaskRoutes(app: FastifyInstance, ctx: ServerContext): vo
             taskId,
             authorType: 'agent',
             authorId: claims.sub,
+            supersedes: versionNumber > 1 ? versionNumber - 1 : null,
           },
           demandId: lease.task.demandId,
         });
+        if (versionNumber > 1) {
+          propagateStaleForArtifact(tx, ctx, lease.task.demandId, body.kind, versionNumber);
+        }
         return { artifact, version, taskState };
       });
       return sendValidated(reply, submitArtifactResponseSchema, {
@@ -484,7 +526,15 @@ export function registerTaskRoutes(app: FastifyInstance, ctx: ServerContext): vo
       const claims = requireExecutor(ctx, request);
       const taskId = paramId(request);
       const body = parseInput(completeTaskBodySchema, request.body, 'complete body');
-      const task = finishTask(ctx, taskId, claims.executorId, 'completed', (tx, current) => {
+      const lease = requireActiveLease(ctx.db, taskId, claims.executorId, ctx.clock());
+      if (!canTransitionTask(lease.task.state, 'completed')) {
+        throw invalidState(`cannot change task ${taskId} from ${lease.task.state} to completed`);
+      }
+      const task = writeTransaction(ctx.db, publish(ctx), (tx) => {
+        const current = getTask(ctx.db, taskId);
+        if (current === null) throw notFound(`task ${taskId} not found`);
+        const updated: Task = { ...current, state: 'completed', updatedAt: tx.now };
+        updateTask(ctx.db, updated);
         endAssignmentForTask(ctx, tx, taskId, claims.executorId, current);
         tx.append({
           type: 'task.completed',
@@ -500,6 +550,9 @@ export function registerTaskRoutes(app: FastifyInstance, ctx: ServerContext): vo
           },
           demandId: current.demandId,
         });
+        // --- H1: completing a stage task evaluates schema + checklist ---
+        completeVscodeTaskStage(tx, ctx, { task: current, artifactIds: body.artifactIds });
+        return updated;
       });
       return sendValidated(reply, completeTaskResponseSchema, {
         task,
@@ -527,6 +580,12 @@ export function registerTaskRoutes(app: FastifyInstance, ctx: ServerContext): vo
             retryable: body.retryable,
           },
           demandId: current.demandId,
+        });
+        // --- H1: a failed stage task retries (or parks) the stage attempt ---
+        failVscodeTaskStage(tx, ctx, {
+          task: current,
+          reason: body.reason,
+          allowRetry: body.retryable,
         });
       });
       return sendValidated(reply, failTaskResponseSchema, { task, serverTime: nowIso(ctx) });

@@ -93,8 +93,11 @@ async function waitForDemandArtifact(ctx: TestContext, demandId: string): Promis
         { token: ctx.userToken },
       );
       if (response.status !== 200) return undefined;
-      const firstStageDone = response.body.stages[0]?.status === 'done';
-      return response.body.artifacts.length > 0 && firstStageDone ? response.body : undefined;
+      // H1: stage 1 has gate G1, so its artifact waits in review for approval.
+      const firstStageReady =
+        response.body.stages[0]?.status === 'waiting_human' ||
+        response.body.stages[0]?.status === 'done';
+      return response.body.artifacts.length > 0 && firstStageReady ? response.body : undefined;
     },
     { timeoutMs: 8_000, label: 'requirement_analysis artifact' },
   );
@@ -197,8 +200,8 @@ describe('H0 walking skeleton e2e (M1 local mode, fake AI)', () => {
     const version = detail.artifactVersions[0];
     expect(version?.checksum).toMatch(/^sha256:[a-f0-9]{64}$/);
     expect(version?.authorType).toBe('ai');
-    expect(detail.stages[0]?.status).toBe('done');
-    expect(detail.stages[1]?.status).toBe('ready');
+    expect(detail.stages[0]?.status).toBe('waiting_human');
+    expect(detail.stages[1]?.status).toBe('pending');
 
     const devStageRun = created.stages[1];
     const task = await createDevTask(ctx, {
@@ -268,7 +271,8 @@ describe('H0 walking skeleton e2e (M1 local mode, fake AI)', () => {
       'stage.ready',
       'stage.started',
       'artifact.created',
-      'stage.done',
+      'approval.requested',
+      'stage.waiting_human',
       'task.created',
       'task.claimed',
       'task.completed',

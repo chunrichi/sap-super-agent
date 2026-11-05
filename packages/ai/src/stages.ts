@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import type { ArtifactKind } from '@sap-superagent/protocol';
 import type { ModelProvider } from './types.js';
-import { parseStageOutput } from './json-output.js';
+import { StageOutputError, parseStageOutput } from './json-output.js';
 import { DEFAULT_AI_MODEL } from './provider-from-env.js';
 import {
   REQUIREMENT_ANALYSIS_OUTPUT_SCHEMA,
@@ -170,6 +170,30 @@ export function aiStageDefinition(stageKey: string): AiStageDefinition | undefin
   return AI_STAGE_DEFINITIONS[stageKey];
 }
 
+/** Fallback used when a template stage key is not a registry key. */
+const BY_OUTPUT_ARTIFACT_KIND: Readonly<Record<string, string>> = {
+  free_note: INTAKE_STAGE_KEY,
+  requirement_analysis: REQUIREMENT_ANALYSIS_STAGE_KEY,
+  dev_spec: DEV_SPEC_STAGE_KEY,
+  test_doc: TEST_DOC_STAGE_KEY,
+  knowledge_entry: KNOWLEDGE_ENTRY_STAGE_KEY,
+};
+
+/**
+ * Resolve the AI definition for a template stage: stage key first, then the
+ * declared output artifact kind (templates may name stages freely, e.g.
+ * `acceptance_archive` producing `knowledge_entry`).
+ */
+export function resolveAiStageDefinition(
+  stageKey: string,
+  outputArtifactKind: ArtifactKind,
+): AiStageDefinition | undefined {
+  const byKey = AI_STAGE_DEFINITIONS[stageKey];
+  if (byKey !== undefined) return byKey;
+  const fallbackKey = BY_OUTPUT_ARTIFACT_KIND[outputArtifactKind];
+  return fallbackKey === undefined ? undefined : AI_STAGE_DEFINITIONS[fallbackKey];
+}
+
 export function requireAiStageDefinition(stageKey: string): AiStageDefinition {
   const definition = aiStageDefinition(stageKey);
   if (definition === undefined) {
@@ -255,7 +279,19 @@ export async function runAiStage<T>(
     temperature: 0,
     metadata: { stageKey: definition.key, attempt },
   });
-  const output = parseStageOutput(definition.outputSchema, result.text, definition.name);
+  let output: T;
+  try {
+    output = parseStageOutput(definition.outputSchema, result.text, definition.name);
+  } catch (error) {
+    if (error instanceof StageOutputError) {
+      // Keep usage accounting even when the model returned invalid JSON.
+      error.model = result.model.length > 0 ? result.model : model;
+      error.tokens = result.usage.totalTokens;
+      error.costUsd = result.costUsd;
+      error.promptVersion = definition.promptVersion;
+    }
+    throw error;
+  }
   const ledger: StageRunLedger = {
     model: result.model.length > 0 ? result.model : model,
     promptVersion: definition.promptVersion,

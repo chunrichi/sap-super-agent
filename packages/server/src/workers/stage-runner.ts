@@ -1,73 +1,49 @@
 import {
-  REQUIREMENT_ANALYSIS_PROMPT_VERSION,
-  runRequirementAnalysisStage,
-  type RequirementAnalysisInput,
-  type RequirementAnalysisOutput,
+  StageOutputError,
+  resolveAiStageDefinition,
+  runAiStage,
+  type AiStageDefinition,
+  type AiStageInput,
+  type AiStageUpstreamArtifact,
   type StageRunLedger,
 } from '@sap-superagent/ai';
+import { canTransitionDemand, evaluateStageCompletion, findStage } from '@sap-superagent/core';
 import {
-  newUlid,
-  type Artifact,
-  type ArtifactVersion,
   type Demand,
   type StageRun,
   type StageTemplate,
   type StageTemplateFile,
 } from '@sap-superagent/protocol';
-import {
-  canTransitionDemand,
-  collectInputRefs,
-  findStage,
-  inputArtifactsReady,
-  statusAfterFailedAttempt,
-  type ArtifactAvailability,
-} from '@sap-superagent/core';
-import { artifactContentRef, checksumOfBytes, writeArtifactBytes } from '../artifact-store.js';
-import {
-  insertArtifact,
-  insertArtifactVersion,
-  latestArtifactRefsByKind,
-} from '../db/artifacts.js';
+import { readArtifactBytes } from '../artifact-store.js';
+import { latestArtifactRefsByKind, latestVersionsByKind } from '../db/artifacts.js';
 import { getDemand, updateDemand } from '../db/demands.js';
 import {
   getStageRun,
-  getStageRunByKey,
   insertStageAttempt,
   recoverRunningServerAiStages,
   selectReadyServerAiStageRuns,
   updateStageRun,
 } from '../db/stages.js';
-import { writeTransaction, type TransactionContext } from '../db/transaction.js';
+import { writeTransaction } from '../db/transaction.js';
+import { completeStageAfterArtifact, failStageAttempt, persistStageArtifact } from '../stage-engine.js';
 import type { ServerContext } from '../types.js';
 
-const ARTIFACT_CONTENT_TYPE = 'application/json';
-const AI_AUTHOR_ID = 'server-ai';
+// ---------------------------------------------------------------------------
+// Server-AI stage runner (docs/003 §2.2, H1 §1.1): drains ready `server-ai`
+// stage runs from the loaded template, resolves the stage by key in the AI
+// stage registry, validates schema + checklist before persisting anything and
+// then hands over to the gate/advance engine.
+// ---------------------------------------------------------------------------
 
-function toStageInput(demand: Demand): RequirementAnalysisInput {
-  return {
-    demand: {
-      id: demand.id,
-      title: demand.title,
-      description: demand.description,
-      acceptanceCriteria: demand.acceptanceCriteria,
-      requester: {
-        userId: demand.requester.userId,
-        ...(demand.requester.orgUnit !== undefined ? { orgUnit: demand.requester.orgUnit } : {}),
-      },
-      priority: demand.priority,
-    },
-  };
-}
+const AI_AUTHOR_ID = 'server-ai';
+const ARTIFACT_CONTENT_TYPE = 'application/json';
+/** Keep prompts bounded: upstream content is truncated per artifact. */
+const MAX_UPSTREAM_CHARS = 20_000;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * Drains `server-ai` stage runs on an interval. Each stage is claimed into
- * `running` in its own transaction, the model call happens outside any
- * transaction, and the result is persisted atomically (docs/003 §2.2).
- */
 export class StageRunner {
   private readonly ctx: ServerContext;
   private timer: NodeJS.Timeout | null = null;
@@ -127,15 +103,78 @@ export class StageRunner {
     }
   }
 
+  /** Resolve the template + AI stage definition for the run's stage key. */
+  private resolve(
+    stageRun: StageRun,
+    demand: Demand,
+  ): {
+    template: StageTemplateFile;
+    stageTemplate: StageTemplate;
+    definition: AiStageDefinition;
+  } | null {
+    const template = this.ctx.templates.getForDemand(demand);
+    if (template === undefined) return null;
+    const stageTemplate = findStage(template, stageRun.stageKey);
+    if (stageTemplate === undefined) return null;
+    const definition = resolveAiStageDefinition(
+      stageTemplate.key,
+      stageTemplate.outputArtifactKind,
+    );
+    if (definition === undefined) return null;
+    return { template, stageTemplate, definition };
+  }
+
+  private collectUpstream(
+    demand: Demand,
+    stageTemplate: StageTemplate,
+  ): AiStageUpstreamArtifact[] | null {
+    const latest = latestVersionsByKind(this.ctx.db, demand.id);
+    const upstream: AiStageUpstreamArtifact[] = [];
+    for (const kind of stageTemplate.inputArtifactKinds) {
+      const entry = latest.get(kind);
+      if (entry === undefined) return null;
+      let contentText = '';
+      try {
+        contentText = Buffer.from(
+          readArtifactBytes(
+            this.ctx.config.stateDir,
+            entry.artifact.id,
+            entry.version.version,
+          ),
+        )
+          .toString('utf8')
+          .slice(0, MAX_UPSTREAM_CHARS);
+      } catch {
+        contentText = '';
+      }
+      upstream.push({
+        kind,
+        artifactId: entry.artifact.id,
+        version: entry.version.version,
+        contentType: entry.version.contentType,
+        contentText,
+      });
+    }
+    return upstream;
+  }
+
   private async execute(stageRunId: string): Promise<void> {
     const initial = getStageRun(this.ctx.db, stageRunId);
     if (initial === null || initial.status !== 'ready') return;
     const demand = getDemand(this.ctx.db, initial.demandId);
     if (demand === null) return;
-    const template = this.ctx.templates.get(demand.templateId);
-    const stageTemplate = template === undefined ? undefined : findStage(template, initial.stageKey);
-    if (template === undefined || stageTemplate === undefined) {
-      this.markWaitingHuman(stageRunId, `template ${demand.templateId} has no stage "${initial.stageKey}"`);
+    const resolved = this.resolve(initial, demand);
+    if (resolved === null) {
+      this.markWaitingHuman(
+        stageRunId,
+        `no server-AI stage registered for "${initial.stageKey}" in template ${demand.templateId}@${demand.templateVersion}`,
+      );
+      return;
+    }
+    const { template, stageTemplate, definition } = resolved;
+    const upstream = this.collectUpstream(demand, stageTemplate);
+    if (upstream === null) {
+      this.markWaitingHuman(stageRunId, `missing upstream artifacts for stage "${initial.stageKey}"`);
       return;
     }
 
@@ -159,6 +198,7 @@ export class StageRunner {
           stageKey: current.stageKey,
           attempt: current.attempt,
           executorKind: current.executorKind,
+          promptVersion: definition.promptVersion,
         },
         demandId: current.demandId,
       });
@@ -176,233 +216,156 @@ export class StageRunner {
     });
     if (claimed === null) return;
 
+    const stageInput: AiStageInput = {
+      stageKey: definition.key,
+      stageName: stageTemplate.name,
+      promptVersion: definition.promptVersion,
+      demand: {
+        id: demand.id,
+        title: demand.title,
+        description: demand.description,
+        acceptanceCriteria: demand.acceptanceCriteria,
+        requester: {
+          userId: demand.requester.userId,
+          ...(demand.requester.orgUnit === undefined ? {} : { orgUnit: demand.requester.orgUnit }),
+        },
+        priority: demand.priority,
+      },
+      upstream,
+    };
+
     const startedAtMs = Date.now();
     try {
-      const result = await runRequirementAnalysisStage(toStageInput(demand), this.ctx.aiProvider, {
+      const result = await runAiStage(definition, stageInput, this.ctx.aiProvider, {
         attempt: claimed.attempt,
       });
-      this.completeStage(claimed, stageTemplate, demand, result.output, result.ledger, startedAtMs);
+      this.completeStage(claimed, template, stageTemplate, result.output, result.ledger, startedAtMs);
     } catch (error) {
-      this.failStage(claimed, stageTemplate, errorMessage(error), Date.now() - startedAtMs);
+      this.failStage(claimed, template, stageTemplate, error, Date.now() - startedAtMs);
     }
   }
 
   private completeStage(
     stageRun: StageRun,
+    template: StageTemplateFile,
     stageTemplate: StageTemplate,
-    demand: Demand,
-    output: RequirementAnalysisOutput,
+    output: unknown,
     ledger: StageRunLedger,
     startedAtMs: number,
   ): void {
-    const content = JSON.stringify(output, null, 2);
-    const bytes = Buffer.from(content, 'utf8');
-    const checksum = checksumOfBytes(bytes);
-    const artifactId = newUlid();
-    const contentRef = artifactContentRef(artifactId, 1);
-    writeArtifactBytes(this.ctx.config.stateDir, artifactId, 1, bytes);
-    const finishedAt = new Date().toISOString();
-
+    const contentText = JSON.stringify(output, null, 2);
+    const structured = typeof output === 'object' && output !== null ? output : null;
     writeTransaction(this.ctx.db, (events) => this.ctx.hub.broadcast(events), (tx) => {
       const current = getStageRun(this.ctx.db, stageRun.id);
       if (current === null || current.status !== 'running') return;
-      const artifact: Artifact = {
-        id: artifactId,
-        demandId: current.demandId,
-        kind: stageTemplate.outputArtifactKind,
-        stageKey: current.stageKey,
-        stageRunId: current.id,
-        state: 'generated',
-        currentVersion: 1,
-        title: stageTemplate.name,
-        createdAt: tx.now,
-        updatedAt: tx.now,
+      const demand = getDemand(this.ctx.db, current.demandId);
+      if (demand === null) return;
+      const latestInputRefs = latestArtifactRefsByKind(this.ctx.db, demand.id);
+      const completion = evaluateStageCompletion({
+        stage: stageTemplate,
+        demand,
+        outputText: contentText,
+        outputJson: structured,
+        inputRefs: current.inputRefs,
+        latestInputRefs,
+        outputStale: false,
+        schemaOk: true,
+      });
+      const ledgerRecord = {
+        model: ledger.model,
+        promptVersion: ledger.promptVersion,
+        schemaOk: true,
+        tokens: ledger.tokens,
+        costUsd: ledger.costUsd,
+        durationMs: ledger.durationMs,
+        startedAt: new Date(startedAtMs).toISOString(),
       };
-      insertArtifact(this.ctx.db, artifact);
-      const version: ArtifactVersion = {
-        artifactId,
-        version: 1,
-        contentRef,
-        contentType: ARTIFACT_CONTENT_TYPE,
-        checksum,
-        summary: typeof output['summary'] === 'string' ? output['summary'] : null,
-        authorType: 'ai',
-        authorId: AI_AUTHOR_ID,
-        stale: false,
-        createdAt: tx.now,
-      };
-      insertArtifactVersion(this.ctx.db, version);
+      if (!completion.ok) {
+        const reason = `checklist: ${completion.failures.join('; ')}`;
+        failStageAttempt(tx, this.ctx, {
+          demand,
+          template,
+          stageRun: current,
+          stageTemplate,
+          reason,
+          error: reason,
+          ledger: ledgerRecord,
+        });
+        return;
+      }
       insertStageAttempt(this.ctx.db, {
         stageRunId: current.id,
         attempt: current.attempt,
         model: ledger.model,
         promptVersion: ledger.promptVersion,
         inputRefs: current.inputRefs,
-        schemaOk: ledger.schemaOk,
+        schemaOk: true,
         tokens: ledger.tokens,
         costUsd: ledger.costUsd,
         durationMs: ledger.durationMs,
         error: null,
-        startedAt: new Date(startedAtMs).toISOString(),
-        finishedAt,
-      });
-      updateStageRun(this.ctx.db, {
-        ...current,
-        status: 'done',
-        outputArtifactId: artifactId,
+        startedAt: ledgerRecord.startedAt,
         finishedAt: tx.now,
-        updatedAt: tx.now,
       });
-      tx.append({
-        type: 'artifact.created',
-        subject: { type: 'artifact', id: artifactId },
-        data: {
-          artifactId,
-          demandId: current.demandId,
-          kind: artifact.kind,
-          version: 1,
-          checksum,
-          contentRef,
+      const summary =
+        typeof (output as Record<string, unknown>)['summary'] === 'string'
+          ? ((output as Record<string, unknown>)['summary'] as string)
+          : null;
+      const persisted = persistStageArtifact(tx, this.ctx, {
+        demand,
+        template,
+        stageRun: current,
+        stageTemplate,
+        output: {
+          contentText,
+          contentType: ARTIFACT_CONTENT_TYPE,
           authorType: 'ai',
           authorId: AI_AUTHOR_ID,
-          model: ledger.model,
+          summary,
+          title: stageTemplate.name,
         },
-        demandId: current.demandId,
       });
-      tx.append({
-        type: 'stage.done',
-        subject: { type: 'stage_run', id: current.id },
-        data: {
-          stageRunId: current.id,
-          demandId: current.demandId,
-          stageKey: current.stageKey,
-          attempt: current.attempt,
-          outputArtifactId: artifactId,
-          tokens: ledger.tokens,
-          costUsd: ledger.costUsd,
-        },
-        demandId: current.demandId,
+      completeStageAfterArtifact(tx, this.ctx, {
+        demand,
+        template,
+        stageRun: current,
+        stageTemplate,
+        artifact: persisted.artifact,
+        artifactVersion: persisted.artifactVersion,
       });
-      const template = this.ctx.templates.get(demand.templateId);
-      if (template !== undefined) this.advance(tx, demand.templateId, template, current.demandId, current.stageKey);
     });
   }
 
   private failStage(
     stageRun: StageRun,
+    template: StageTemplateFile,
     stageTemplate: StageTemplate,
-    message: string,
+    error: unknown,
     durationMs: number,
   ): void {
+    const outputError = error instanceof StageOutputError ? error : null;
     writeTransaction(this.ctx.db, (events) => this.ctx.hub.broadcast(events), (tx) => {
       const current = getStageRun(this.ctx.db, stageRun.id);
       if (current === null || current.status !== 'running') return;
-      const maxAttempts = stageTemplate.maxAttempts;
-      insertStageAttempt(this.ctx.db, {
-        stageRunId: current.id,
-        attempt: current.attempt,
-        model: null,
-        promptVersion: REQUIREMENT_ANALYSIS_PROMPT_VERSION,
-        inputRefs: current.inputRefs,
-        schemaOk: false,
-        tokens: 0,
-        costUsd: 0,
-        durationMs: Math.max(0, durationMs),
-        error: message,
-        startedAt: current.startedAt ?? tx.now,
-        finishedAt: tx.now,
-      });
-      const next = statusAfterFailedAttempt(current.attempt, maxAttempts);
-      tx.append({
-        type: 'stage.failed',
-        subject: { type: 'stage_run', id: current.id },
-        data: {
-          stageRunId: current.id,
-          demandId: current.demandId,
-          stageKey: current.stageKey,
-          attempt: current.attempt,
-          error: message,
-          willRetry: next === 'ready',
-          nextAttempt: next === 'ready' ? current.attempt + 1 : null,
+      const demand = getDemand(this.ctx.db, current.demandId);
+      if (demand === null) return;
+      failStageAttempt(tx, this.ctx, {
+        demand,
+        template,
+        stageRun: current,
+        stageTemplate,
+        reason: errorMessage(error),
+        error: errorMessage(error),
+        ledger: {
+          model: outputError?.model ?? null,
+          promptVersion: outputError?.promptVersion ?? null,
+          schemaOk: false,
+          tokens: outputError?.tokens ?? 0,
+          costUsd: outputError?.costUsd ?? 0,
+          durationMs,
+          startedAt: current.startedAt ?? tx.now,
         },
-        demandId: current.demandId,
       });
-      if (next === 'ready') {
-        updateStageRun(this.ctx.db, {
-          ...current,
-          status: 'ready',
-          attempt: current.attempt + 1,
-          startedAt: null,
-          finishedAt: null,
-          updatedAt: tx.now,
-        });
-        return;
-      }
-      updateStageRun(this.ctx.db, {
-        ...current,
-        status: 'waiting_human',
-        finishedAt: tx.now,
-        updatedAt: tx.now,
-      });
-      tx.append({
-        type: 'stage.waiting_human',
-        subject: { type: 'stage_run', id: current.id },
-        data: {
-          stageRunId: current.id,
-          demandId: current.demandId,
-          stageKey: current.stageKey,
-          attempt: current.attempt,
-          error: message,
-        },
-        demandId: current.demandId,
-      });
-    });
-  }
-
-  private advance(
-    tx: TransactionContext,
-    templateId: string,
-    template: StageTemplateFile,
-    demandId: string,
-    doneStageKey: string,
-  ): void {
-    const index = template.stages.findIndex((stage) => stage.key === doneStageKey);
-    const next = index < 0 ? undefined : template.stages[index + 1];
-    const demand = getDemand(this.ctx.db, demandId);
-    if (demand === null) return;
-    if (next === undefined) {
-      if (!canTransitionDemand(demand.status, 'review')) return;
-      updateDemand(this.ctx.db, { ...demand, status: 'review', updatedAt: tx.now });
-      tx.append({
-        type: 'demand.updated',
-        subject: { type: 'demand', id: demandId },
-        data: { demandId, status: 'review', reason: 'all_stages_done' },
-        demandId,
-      });
-      return;
-    }
-    const stageRun = getStageRunByKey(this.ctx.db, demandId, next.key);
-    if (stageRun === null || stageRun.status !== 'pending') return;
-    const byKind = latestArtifactRefsByKind(this.ctx.db, demandId);
-    const availability: ArtifactAvailability = { byKind };
-    if (!inputArtifactsReady(next, availability)) return;
-    updateStageRun(this.ctx.db, {
-      ...stageRun,
-      status: 'ready',
-      inputRefs: collectInputRefs(next, availability),
-      updatedAt: tx.now,
-    });
-    tx.append({
-      type: 'stage.ready',
-      subject: { type: 'stage_run', id: stageRun.id },
-      data: {
-        stageRunId: stageRun.id,
-        demandId,
-        stageKey: next.key,
-        executorKind: stageRun.executorKind,
-        templateId,
-      },
-      demandId,
     });
   }
 
@@ -432,7 +395,12 @@ export class StageRunner {
       tx.append({
         type: 'stage.waiting_human',
         subject: { type: 'stage_run', id: current.id },
-        data: { stageRunId: current.id, demandId: current.demandId, stageKey: current.stageKey },
+        data: {
+          stageRunId: current.id,
+          demandId: current.demandId,
+          stageKey: current.stageKey,
+          attempt: current.attempt,
+        },
         demandId: current.demandId,
       });
     });

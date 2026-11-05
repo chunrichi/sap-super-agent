@@ -2,16 +2,19 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   adminCreateTaskBodySchema,
   adminCreateTaskResponseSchema,
+  adminExpireApprovalResponseSchema,
   newUlid,
   type Task,
 } from '@sap-superagent/protocol';
+import { getApproval } from '../../db/approvals.js';
 import { getDemand } from '../../db/demands.js';
 import { getStageRun } from '../../db/stages.js';
 import { insertTask } from '../../db/tasks.js';
 import { writeTransaction } from '../../db/transaction.js';
 import { badRequest, notFound } from '../../errors.js';
+import { expireApproval } from '../../stage-engine.js';
 import { requireAdmin } from '../auth.js';
-import { nowIso, publish } from '../route-utils.js';
+import { nowIso, paramId, publish } from '../route-utils.js';
 import { parseInput, sendValidated } from '../validate.js';
 import type { ServerContext } from '../../types.js';
 
@@ -64,6 +67,25 @@ export function registerAdminRoutes(app: FastifyInstance, ctx: ServerContext): v
       });
       return sendValidated(reply, adminCreateTaskResponseSchema, {
         task,
+        serverTime: nowIso(ctx),
+      });
+    },
+  );
+
+  // --- H1: M1 operations escalation for a stuck gate (docs/003 §2.5) ---
+  app.post(
+    '/api/v1/admin/approvals/:id/expire',
+    async (request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
+      requireAdmin(ctx, request);
+      const approvalId = paramId(request);
+      const approval = writeTransaction(ctx.db, publish(ctx), (tx) => {
+        const current = getApproval(ctx.db, approvalId);
+        if (current === null) throw notFound(`approval ${approvalId} not found`);
+        if (current.state !== 'pending') return current;
+        return expireApproval(tx, ctx, current);
+      });
+      return sendValidated(reply, adminExpireApprovalResponseSchema, {
+        approval,
         serverTime: nowIso(ctx),
       });
     },

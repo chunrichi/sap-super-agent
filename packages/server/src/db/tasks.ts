@@ -136,3 +136,26 @@ export function addLastHolder(existing: readonly string[], userId: string): stri
   const next = [userId, ...existing.filter((candidate) => candidate !== userId)];
   return next.slice(0, 3);
 }
+
+/**
+ * Open (non-terminal) task materializing a stage attempt, if any (H1): a stage
+ * attempt owns at most one open task so retries never double-dispatch.
+ */
+export function getOpenTaskForStageRun(db: DatabaseSync, stageRunId: string): Task | null {
+  const row = db
+    .prepare(
+      `SELECT * FROM tasks
+       WHERE stage_run_id = ? AND state NOT IN ('completed', 'failed', 'cancelled')
+       ORDER BY created_at DESC LIMIT 1`,
+    )
+    .get(stageRunId) as unknown as TaskRow | undefined;
+  return row === undefined ? null : rowToTask(row);
+}
+
+/** Most recent task for a stage attempt, including terminal ones (H1). */
+export function getLatestTaskForStageRun(db: DatabaseSync, stageRunId: string): Task | null {
+  const row = db
+    .prepare('SELECT * FROM tasks WHERE stage_run_id = ? ORDER BY created_at DESC LIMIT 1')
+    .get(stageRunId) as unknown as TaskRow | undefined;
+  return row === undefined ? null : rowToTask(row);
+}

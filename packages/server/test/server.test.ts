@@ -77,7 +77,8 @@ describe('control-plane REST surface', () => {
     expect(artifact).toMatchObject({
       id: artifactId,
       kind: 'requirement_analysis',
-      state: 'generated',
+      // H1: the stage has gate G1, so the generated artifact waits in review.
+      state: 'in_review',
       currentVersion: 1,
     });
     const version = detail.body.artifactVersions[0];
@@ -92,15 +93,16 @@ describe('control-plane REST surface', () => {
     const requirementStage = detail.body.stages.find(
       (stage) => stage.stageKey === 'requirement_analysis',
     );
-    expect(requirementStage).toMatchObject({ status: 'done', outputArtifactId: artifactId });
+    expect(requirementStage).toMatchObject({ status: 'waiting_human', outputArtifactId: artifactId });
     const devStage = detail.body.stages.find((stage) => stage.stageKey === 'dev_implementation');
-    expect(devStage?.status).toBe('ready');
+    expect(devStage?.status).toBe('pending');
 
     const types = eventTypes(detail.body.events);
     expect(types).toContain('demand.created');
     expect(types).toContain('stage.started');
     expect(types).toContain('artifact.created');
-    expect(types).toContain('stage.done');
+    expect(types).toContain('approval.requested');
+    expect(types).toContain('stage.waiting_human');
 
     const contents = readFileSync(join(server.stateDir, 'artifacts', artifactId, 'v1.bin'), 'utf8');
     expect(JSON.parse(contents)).toMatchObject({ summary: expect.stringContaining('R-9001') });

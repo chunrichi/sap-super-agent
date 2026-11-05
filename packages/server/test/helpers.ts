@@ -180,7 +180,7 @@ export interface RegisteredExecutor {
 export async function registerExecutor(
   server: TestServer,
   user: string,
-  options: { workspaceKey?: string; repo?: string } = {},
+  options: { workspaceKey?: string; repo?: string; roles?: string[]; kind?: 'vscode' | 'server-ai' } = {},
 ): Promise<RegisteredExecutor> {
   const workspaceKey = options.workspaceKey ?? 'wk-z-sales';
   const response = await api<{
@@ -190,11 +190,11 @@ export async function registerExecutor(
     method: 'POST',
     token: server.userToken,
     body: {
-      kind: 'vscode',
+      kind: options.kind ?? 'vscode',
       user,
       protocolVersion: '1.0',
       capabilities: ['coding'],
-      roles: [],
+      roles: options.roles ?? [],
       workspaces: [
         { workspaceKey, repo: options.repo ?? 'z-sales', projectKey: 'SALES', baseBranch: 'main' },
       ],
@@ -215,5 +215,120 @@ export async function heartbeat(
     method: 'POST',
     token: executor.token,
     body: { status: 'online', load: 0, activeWorkspaceKey: workspaceKey },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// H1 gate/template helpers
+// ---------------------------------------------------------------------------
+
+export interface DemandDetailLike {
+  demand: { id: string; status: string; templateId: string; templateVersion: number };
+  stages: Array<{
+    id: string;
+    stageKey: string;
+    status: string;
+    attempt: number;
+    outputArtifactId: string | null;
+    inputRefs: Array<{ artifactId: string; version: number }>;
+  }>;
+  artifacts: Array<{ id: string; kind: string; state: string; currentVersion: number }>;
+  artifactVersions: Array<{
+    artifactId: string;
+    version: number;
+    stale: boolean;
+    authorType: string;
+    checksum: string;
+  }>;
+  artifactChains: Array<{ stageKey: string | null; artifacts: unknown[]; versions: unknown[] }>;
+  approvals: Array<{
+    id: string;
+    gateKey: string;
+    state: string;
+    artifactId: string;
+    artifactVersion: number;
+    requiredRole: string;
+    expiresAt: string | null;
+    decidedBy: string | null;
+    decision: string | null;
+  }>;
+  events: EventLike[];
+}
+
+export interface EventLike {
+  seq: number;
+  type: string;
+  subject: { type: string; id: string };
+  data: Record<string, unknown>;
+}
+
+export function getDemandDetail(
+  server: TestServer,
+  demandId: string,
+): Promise<ApiResponse<DemandDetailLike>> {
+  return api<DemandDetailLike>(server, `/api/v1/demands/${demandId}`, { token: server.userToken });
+}
+
+export async function createDemand(
+  server: TestServer,
+  overrides: Record<string, unknown> = {},
+): Promise<DemandDetailLike['demand'] & { stages: string[] }> {
+  const response = await api<{ demand: DemandDetailLike['demand']; stages: Array<{ stageKey: string }> }>(
+    server,
+    '/api/v1/demands',
+    {
+      method: 'POST',
+      token: server.userToken,
+      body: {
+        title: 'R-9001 默认模板需求',
+        description: '按销售组织汇总开票金额，空结果返回 0',
+        acceptanceCriteria: ['金额与 MARA 一致', '空结果返回 0'],
+        priority: 'normal',
+        requester: { userId: 'REQ001', orgUnit: 'PDO' },
+        ...overrides,
+      },
+    },
+  );
+  if (response.status !== 200) {
+    throw new Error(`createDemand failed: ${response.status} ${JSON.stringify(response.body)}`);
+  }
+  return { ...response.body.demand, stages: response.body.stages.map((stage) => stage.stageKey) };
+}
+
+/** Wait until a stage reaches the given status, returning the fresh detail. */
+export function waitForStageStatus(
+  server: TestServer,
+  demandId: string,
+  stageKey: string,
+  status: string,
+): Promise<DemandDetailLike> {
+  return waitFor(
+    async () => {
+      const detail = await getDemandDetail(server, demandId);
+      if (detail.status !== 200) return undefined;
+      const stage = detail.body.stages.find((candidate) => candidate.stageKey === stageKey);
+      return stage?.status === status ? detail.body : undefined;
+    },
+    { label: `stage ${stageKey} -> ${status}`, timeoutMs: 8_000 },
+  );
+}
+
+export function listApprovals(
+  server: TestServer,
+  state = 'pending',
+): Promise<ApiResponse<{ approvals: DemandDetailLike['approvals'] }>> {
+  return api(server, `/api/v1/approvals?assignee=me&state=${state}`, { token: server.userToken });
+}
+
+export function decideApproval(
+  server: TestServer,
+  approvalId: string,
+  decision: 'approve' | 'reject',
+  comment?: string,
+): Promise<ApiResponse<{ approval: DemandDetailLike['approvals'][number] }>> {
+  return api(server, `/api/v1/approvals/${approvalId}/decisions`, {
+    method: 'POST',
+    token: server.userToken,
+    body: { decision, ...(comment === undefined ? {} : { comment }) },
   });
 }

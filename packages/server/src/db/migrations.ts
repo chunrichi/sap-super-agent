@@ -201,4 +201,30 @@ ALTER TABLE stage_runs ADD COLUMN stage_index INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX idx_stage_runs_demand_order ON stage_runs (demand_id, stage_index);
 `,
   },
+  // --- H1: approval gates + notifications (docs/003 §2.5, H1 task book §1.2) ---
+  {
+    version: 3,
+    name: 'approval-runtime-and-notifications',
+    sql: `
+ALTER TABLE approvals ADD COLUMN artifact_id TEXT;
+ALTER TABLE approvals ADD COLUMN artifact_version INTEGER;
+CREATE INDEX idx_approvals_state_expires ON approvals (state, expires_at);
+CREATE INDEX idx_approvals_demand ON approvals (demand_id, created_at);
+
+CREATE TABLE notifications (
+  id TEXT PRIMARY KEY,
+  demand_id TEXT NOT NULL,
+  stage_run_id TEXT,
+  approval_id TEXT,
+  kind TEXT NOT NULL,
+  required_role TEXT,
+  title TEXT NOT NULL,
+  body TEXT,
+  created_at TEXT NOT NULL,
+  read_at TEXT
+);
+CREATE INDEX idx_notifications_unread ON notifications (read_at, created_at);
+CREATE INDEX idx_notifications_demand ON notifications (demand_id, created_at);
+`,
+  },
 ];

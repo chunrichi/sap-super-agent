@@ -46,6 +46,7 @@ export {
   renderAiStagePrompt,
   requireAiStageDefinition,
   resetPromptCache,
+  resolveAiStageDefinition,
   runAiStage,
   type AiStageDefinition,
   type AiStageInput,

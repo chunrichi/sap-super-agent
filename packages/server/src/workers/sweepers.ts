@@ -1,3 +1,4 @@
+import { getApproval, listExpiredPendingApprovals } from '../db/approvals.js';
 import { endAssignment, releaseAssignmentsForExecutor } from '../lease.js';
 import { listExpiredActiveAssignments } from '../db/assignments.js';
 import { pruneEvents } from '../db/events.js';
@@ -5,6 +6,7 @@ import { getExecutor, listStaleExecutors, updateExecutor } from '../db/executors
 import { pruneIdempotencyRecords } from '../db/idempotency.js';
 import { writeTransaction } from '../db/transaction.js';
 import { publish } from '../http/route-utils.js';
+import { expireApproval } from '../stage-engine.js';
 import type { ServerContext } from '../types.js';
 
 function isoAt(epochMs: number): string {
@@ -43,6 +45,8 @@ export class Sweepers {
   sweep(): void {
     const nowMs = this.ctx.clock();
     this.expireLeases(isoAt(nowMs));
+    // --- H1: expire gate approvals past their timeoutDays (docs/003 §2.5) ---
+    this.expireApprovalGates(isoAt(nowMs));
     this.takeOfflineExecutors(isoAt(nowMs - this.ctx.config.presenceTtlMs));
     pruneEvents(this.ctx.db, isoAt(nowMs - this.ctx.config.eventRetentionMs));
     pruneIdempotencyRecords(this.ctx.db, isoAt(nowMs - this.ctx.config.idempotencyTtlMs));
@@ -59,6 +63,17 @@ export class Sweepers {
         this.inFlight = null;
       });
     this.inFlight = promise;
+  }
+
+  private expireApprovalGates(nowIso: string): void {
+    const expired = listExpiredPendingApprovals(this.ctx.db, nowIso);
+    for (const approval of expired) {
+      writeTransaction(this.ctx.db, publish(this.ctx), (tx) => {
+        const fresh = getApproval(this.ctx.db, approval.id);
+        if (fresh === null || fresh.state !== 'pending') return;
+        expireApproval(tx, this.ctx, fresh);
+      });
+    }
   }
 
   private expireLeases(nowIso: string): void {

@@ -1,0 +1,72 @@
+:root {
+  --fg: #172b4d;
+  --muted: #5e6c84;
+  --line: #dfe1e6;
+  --accent: #0a6ed1;
+  --ok: #2e7d32;
+  --warn: #b26a00;
+  --bg: #f7f8fa;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font: 14px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 20px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+.bar h1 { font-size: 16px; margin: 0; }
+.bar nav { display: flex; gap: 8px; }
+
+button {
+  font: inherit;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--fg);
+  cursor: pointer;
+}
+button.active, button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+
+main { padding: 16px 20px; max-width: 1040px; }
+.card { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; margin-bottom: 12px; }
+.muted { color: var(--muted); }
+.row { display: flex; gap: 12px; align-items: baseline; }
+.spacer { flex: 1; }
+
+table { width: 100%; border-collapse: collapse; background: #fff; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+tr[data-id] { cursor: pointer; }
+tr[data-id]:hover { background: #f0f6ff; }
+th { font-weight: 600; color: var(--muted); font-size: 12px; }
+
+.status { display: inline-block; padding: 2px 8px; border-radius: 10px; background: #eef3f9; font-size: 12px; }
+.status.ok { background: #e6f4ea; color: var(--ok); }
+.status.warn { background: #fff4e5; color: var(--warn); }
+
+label { display: block; margin: 10px 0 4px; font-weight: 600; }
+input, textarea, select {
+  width: 100%;
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+}
+textarea { min-height: 80px; resize: vertical; }
+.actions { display: flex; gap: 8px; margin-top: 12px; }
+.timeline { list-style: none; padding-left: 0; }
+.timeline li { padding: 4px 0; border-bottom: 1px dashed var(--line); }
+.error { color: #b00020; }

@@ -1,0 +1,21 @@
+@EndUserText.label : 'ZSA artifact metadata'
+@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zsa_artifact {
+  key client           : abap.clnt not null;
+  key artifact_id      : abap.char(32) not null;
+  demand_id            : abap.char(32) not null;
+  stage_key            : abap.char(30) not null;
+  stage_run_id         : abap.char(32);
+  kind                 : abap.char(30) not null;
+  version              : abap.int4 not null;
+  checksum             : abap.char(64) not null;
+  content_ref          : abap.char(255) not null;
+  content_type         : abap.char(128) not null;
+  status               : abap.char(20) not null;
+  author_type          : abap.char(10) not null;
+  author_id            : abap.char(40) not null;
+  created_at           : abap.timestampl not null;
+}

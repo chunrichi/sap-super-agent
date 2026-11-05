@@ -1,0 +1,11 @@
+@EndUserText.label : 'ZSA configuration'
+@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #C
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zsa_cfg {
+  key client           : abap.clnt not null;
+  key cfg_key          : abap.char(64) not null;
+  cfg_value            : abap.string(0);
+  changed_at           : abap.timestampl not null;
+}

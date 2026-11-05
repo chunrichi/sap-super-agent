@@ -1,0 +1,17 @@
+@EndUserText.label : 'ZSA approval'
+@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zsa_approval {
+  key client           : abap.clnt not null;
+  key approval_id      : abap.char(32) not null;
+  demand_id            : abap.char(32) not null;
+  stage_key            : abap.char(30);
+  gate_key             : abap.char(30) not null;
+  state                : abap.char(20) not null;
+  required_role        : abap.char(40);
+  decided_by           : abap.char(12);
+  decided_at           : abap.timestampl;
+  comment              : abap.string(0);
+}

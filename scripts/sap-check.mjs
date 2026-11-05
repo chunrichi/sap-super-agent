@@ -85,7 +85,7 @@ const requiredFiles = [
   'sap/src/zcl_zsa_http_handler.clas.json',
   'sap/src/zcl_zsa_http_handler.clas.abap',
   'sap/src/zcl_zsa_http_handler.clas.testclasses.abap',
-  'sap/src/zsa_api.http.json',
+  'sap/src/zsa.http.json',
   'sap/src/zsa_outbox_push.prog.json',
   'sap/src/zsa_outbox_push.prog.abap',
   'sap/ui/index.html',

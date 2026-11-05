@@ -1,7 +1,7 @@
 CLASS zcl_zsa_json DEFINITION PUBLIC FINAL CREATE PUBLIC.
   PUBLIC SECTION.
     CONSTANTS c_content_type TYPE string VALUE 'application/json; charset=utf-8'.
-    CONSTANTS c_iso_utc_zone TYPE string VALUE 'UTC'.
+    CONSTANTS c_iso_utc_zone TYPE tznzone VALUE 'UTC'.
 
     TYPES ty_acceptance TYPE STANDARD TABLE OF string WITH DEFAULT KEY.
 
@@ -110,7 +110,7 @@ CLASS zcl_zsa_json DEFINITION PUBLIC FINAL CREATE PUBLIC.
       RETURNING VALUE(rv_tstmp) TYPE timestampl.
 
     CLASS-METHODS escape_json
-      IMPORTING iv_value         TYPE string
+      IMPORTING iv_value         TYPE clike
       RETURNING VALUE(rv_escaped) TYPE string.
 
     CLASS-METHODS envelope_body
@@ -120,12 +120,6 @@ CLASS zcl_zsa_json DEFINITION PUBLIC FINAL CREATE PUBLIC.
       RETURNING VALUE(rv_body) TYPE string.
 
   PRIVATE SECTION.
-    CLASS-METHODS demand_to_dto
-      IMPORTING is_demand       TYPE zsa_demand
-                iv_description  TYPE string
-                iv_acceptance   TYPE string
-      RETURNING VALUE(rs_dto) TYPE ty_demand_json.
-
     TYPES: BEGIN OF ty_demand_json,
              demand_id           TYPE string,
              demand_no           TYPE string,
@@ -146,15 +140,20 @@ CLASS zcl_zsa_json DEFINITION PUBLIC FINAL CREATE PUBLIC.
              created_at          TYPE string,
              changed_at          TYPE string,
            END OF ty_demand_json.
+    CLASS-METHODS demand_to_dto
+      IMPORTING is_demand       TYPE zsa_demand
+                iv_description  TYPE string
+                iv_acceptance   TYPE string
+      RETURNING VALUE(rs_dto) TYPE ty_demand_json.
+
 ENDCLASS.
 
 CLASS zcl_zsa_json IMPLEMENTATION.
   METHOD serialize.
-    /ui2/cl_json=>serialize(
-      EXPORTING data        = is_data
-                pretty_name = /ui2/cl_json=>pretty_mode-camel_case
-                compress    = abap_true
-      RECEIVING r_json      = rv_json ).
+    rv_json = /ui2/cl_json=>serialize(
+      data        = is_data
+      pretty_name = /ui2/cl_json=>pretty_mode-camel_case
+      compress    = abap_true ).
   ENDMETHOD.
 
   METHOD deserialize.

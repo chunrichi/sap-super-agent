@@ -47,14 +47,6 @@ CLASS zcl_zsa_event_push DEFINITION PUBLIC FINAL CREATE PUBLIC.
                 iv_timestamp    TYPE string
                 iv_delivery     TYPE string
       RETURNING VALUE(rv_status) TYPE i.
-
-    CLASS-METHODS to_hex
-      IMPORTING iv_x            TYPE xstring
-      RETURNING VALUE(rv_hex) TYPE string.
-
-    CLASS-METHODS timestamp_short
-      IMPORTING iv_tstmp        TYPE timestampl
-      RETURNING VALUE(rv_short) TYPE timestamp.
 ENDCLASS.
 
 CLASS zcl_zsa_event_push IMPLEMENTATION.
@@ -73,12 +65,13 @@ CLASS zcl_zsa_event_push IMPLEMENTATION.
     DATA lv_now TYPE timestampl.
     lv_now = zcl_zsa_json=>now_tstmp( ).
 
-    SELECT * FROM zsa_event_out
+    SELECT *
+      UP TO @iv_limit ROWS
+      FROM zsa_event_out
       INTO TABLE @lt_events
       WHERE state = @c_state_new
         AND next_at <= @lv_now
-      ORDER BY next_at
-      UP TO @iv_limit ROWS.
+      ORDER BY next_at.
 
     LOOP AT lt_events INTO DATA(ls_event).
       TRY.
@@ -105,7 +98,7 @@ CLASS zcl_zsa_event_push IMPLEMENTATION.
     ENDIF.
     DATA(lv_occurred) = zcl_zsa_json=>timestamp_to_iso( is_event-created_at ).
     DATA(lv_body) = zcl_zsa_json=>envelope_body(
-      iv_event_id    = is_event-event_id
+      iv_event_id    = CONV string( is_event-event_id )
       iv_occurred_at = lv_occurred
       iv_data_json   = is_event-payload ).
     DATA(lv_signature) = signature_hex( iv_secret = lv_secret iv_body = lv_body ).
@@ -114,22 +107,26 @@ CLASS zcl_zsa_event_push IMPLEMENTATION.
       iv_body      = lv_body
       iv_signature = lv_signature
       iv_timestamp = lv_occurred
-      iv_delivery  = is_event-event_id ).
+      iv_delivery  = CONV string( is_event-event_id ) ).
     rv_ok = COND #( WHEN lv_status >= 200 AND lv_status < 300 THEN abap_true ELSE abap_false ).
   ENDMETHOD.
 
   METHOD signature_hex.
-    DATA lv_digest TYPE xstring.
+    " cl_abap_hmac returns the digest as a hex character string; the key has
+    " to be an xstring, so the secret is converted from UTF-8 first.
+    DATA lv_hex TYPE string.
+    DATA(lv_key) = cl_abap_codepage=>convert_to( source = iv_secret ).
     TRY.
         cl_abap_hmac=>calculate_hmac_for_char(
           EXPORTING if_algorithm     = `SHA256`
-                    if_key           = iv_secret
+                    if_key           = lv_key
                     if_data          = iv_body
-          IMPORTING ef_hmacxstring   = lv_digest ).
+          IMPORTING ef_hmacstring    = lv_hex ).
       CATCH cx_root.
         RETURN.
     ENDTRY.
-    rv_signature = `sha256=` && to_hex( lv_digest ).
+    TRANSLATE lv_hex TO LOWER CASE.
+    rv_signature = `sha256=` && lv_hex.
   ENDMETHOD.
 
   METHOD read_cfg.
@@ -151,7 +148,7 @@ CLASS zcl_zsa_event_push IMPLEMENTATION.
   METHOD mark_sent.
     DATA(lv_now) = zcl_zsa_json=>now_tstmp( ).
     UPDATE zsa_event_out
-      SET state = @c_state_sent
+      SET state      = @c_state_sent,
           changed_at = @lv_now
       WHERE event_id = @is_event-event_id.
   ENDMETHOD.
@@ -159,21 +156,23 @@ CLASS zcl_zsa_event_push IMPLEMENTATION.
   METHOD handle_failure.
     DATA(lv_now) = zcl_zsa_json=>now_tstmp( ).
     DATA(lv_attempts) = is_event-attempts + 1.
-    DATA(lv_next_short) = timestamp_short( lv_now ) + backoff_delay( lv_attempts ).
     DATA lv_next TYPE timestampl.
-    lv_next = lv_next_short.
-    DATA(lv_age) = timestamp_short( lv_now ) - timestamp_short( is_event-created_at ).
+    lv_next = cl_abap_tstmp=>add( tstmp = lv_now
+                                  secs  = backoff_delay( lv_attempts ) ).
+    " Age in real seconds; timestamps themselves do not support arithmetic.
+    DATA(lv_age) = cl_abap_tstmp=>subtract( tstmp1 = lv_now
+                                            tstmp2 = is_event-created_at ).
 
     IF lv_attempts >= c_max_attempts OR lv_age >= c_dead_after_secs.
       UPDATE zsa_event_out
-        SET state = @c_state_dead
-            attempts = @lv_attempts
+        SET state      = @c_state_dead,
+            attempts   = @lv_attempts,
             changed_at = @lv_now
         WHERE event_id = @is_event-event_id.
     ELSE.
       UPDATE zsa_event_out
-        SET attempts = @lv_attempts
-            next_at = @lv_next
+        SET attempts   = @lv_attempts,
+            next_at    = @lv_next,
             changed_at = @lv_now
         WHERE event_id = @is_event-event_id.
     ENDIF.
@@ -207,21 +206,4 @@ CLASS zcl_zsa_event_push IMPLEMENTATION.
     lo_client->close( EXCEPTIONS OTHERS = 3 ).
   ENDMETHOD.
 
-  METHOD to_hex.
-    CONSTANTS c_hex TYPE string VALUE `0123456789abcdef`.
-    DATA lv_len TYPE i.
-    lv_len = xstrlen( iv_x ).
-    DO lv_len TIMES.
-      DATA(lv_offset) = sy-index - 1.
-      DATA(lv_byte) = iv_x+lv_offset(1).
-      DATA(lv_int) = CONV i( lv_byte ).
-      DATA(lv_high) = lv_int DIV 16.
-      DATA(lv_low) = lv_int MOD 16.
-      rv_hex = rv_hex && c_hex+lv_high(1) && c_hex+lv_low(1).
-    ENDDO.
-  ENDMETHOD.
-
-  METHOD timestamp_short.
-    rv_short = iv_tstmp.
-  ENDMETHOD.
 ENDCLASS.

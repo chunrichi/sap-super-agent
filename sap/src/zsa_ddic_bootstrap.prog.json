@@ -1,0 +1,12 @@
+{
+  "formatVersion": "1",
+  "header": {
+    "description": "ZSA DDIC bootstrap (one-off abap-cli 2.2.0 TABL create workaround)",
+    "originalLanguage": "en"
+  },
+  "generalInformation": {
+    "programType": "executableProgram",
+    "programStatus": "customerProductionProgram",
+    "application": "Z"
+  }
+}

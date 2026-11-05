@@ -2,7 +2,7 @@
 
 > 面向 SAP 研发交付的 super-agent：需求记录在 SAP，编排在控制平面，编码在开发者身边的 VSCode，重复的文档工作由服务端 AI 主动完成。
 
-**状态：S0（walking skeleton）与 S1（门禁与模板，M1 本地模式）已完成，S2（SAP 需求系统）进行中。** 代码按 [路线图](docs/007-roadmap.md) 推进；`pnpm check` / `pnpm e2e` / `pnpm eval:golden` 为当前验收命令。
+**状态：S0–S3 与 H2（SAP 需求系统）已完成并合入 `main`；S4（Hook 契约 + `http` 示例目标）已完成，待评审/合入。** 代码按 [路线图](docs/007-roadmap.md) 推进；`pnpm check` / `pnpm e2e` / `pnpm eval:golden` / `pnpm hooks:reconcile` 为当前验收命令。
 
 **设计演示**：[demo/index.html](demo/index.html) — 10 幕 HTML 动画，浏览器打开即可（自动播放，支持 ← → / 空格 / 重播）。
 
@@ -128,14 +128,39 @@ pnpm cli doctor                                    # 环境自检：Node/pnpm/�
 
 端口被占用时用 `pnpm cli dev --port <port>`（例如 3080 已被别的应用占用）。
 
+### Hook（外部系统扩展入口）
+
+Hook 是控制平面对 JIRA / CHARM / Confluence / Teams 等外部系统的**唯一扩展入口**：配置驱动事件订阅 + 统一信封 + 出站队列（重试/死信/重放）+ 入站回执 + 对账。`examples/hooks.yaml` 默认全部 `enabled: false`，不影响上面的 H0–S3 行为。
+
+```sh
+# 0) 契约：docs/008 + contracts/json-schema/hook-*.json；占位适配器：examples/hooks/
+# 1) 本地起一个 HTTP 接收器（例如监听 9099 的 echo server；e2e 用 FakeHookTarget 复现）
+# 2) 把 examples/hooks.yaml 的 http-example.url 指向它、enabled 改成 true，然后启动：
+SA_HOOKS_CONFIG=examples/hooks.yaml SA_HOOKS_HTTP_SECRET=dev-secret pnpm dev
+# 3) 建需求 -> 阶段事件 -> 接收器收到统一信封（eventId/eventType/eventVersion/subject/payload/idempotencyKey/retry/traceId）
+#    + X-SA-Signature / X-SA-Timestamp / X-SA-Delivery（HMAC 同一套 SAP 规则）
+# 4) 查看队列/死信/lastError（admin token），并按 eventId 重放死信（Idempotency-Key 幂等）
+curl -s http://127.0.0.1:3080/hooks -H "authorization: Bearer $ADMIN_TOKEN"
+curl -s -X POST http://127.0.0.1:3080/hooks/http-example/replay \
+  -H "authorization: Bearer $ADMIN_TOKEN" -H 'idempotency-key: <uuid>' \
+  -H 'content-type: application/json' -d '{"eventId":"<event id>"}'
+# 5) 回执：POST /hooks/{id}/receipt（X-SA-* HMAC；重复回执 duplicate:true）
+# 6) 对账（只报告不修复；--fail-on-diff 时有差异退出 3）
+pnpm hooks:reconcile
+pnpm hooks:reconcile --json
+```
+
+信封、配置字段、重试/死信/重放/回执/对账口径见 [008 Hook 契约](docs/008-hooks.md)；四个占位适配器见 [examples/hooks/README.md](examples/hooks/README.md)。契约变更走 `pnpm contract:gen`。
+
 开发与验收门禁：
 
 ```sh
-pnpm check        # typecheck + eslint + 单测/集成测试 + contracts 快照
-pnpm e2e          # M1 纵向闭环 + 门禁审批 + SAP 链路 + 多执行器派发（009 #1–#5/#8/#9/#16）
-pnpm eval:golden  # golden set 离线评测（fake provider 确定性输出 evals/report.json）
-pnpm build        # 所有包按依赖拓扑序构建（产物在 .gitignore 内）
-pnpm contract:gen # 从 protocol 重新生成 contracts/json-schema 与 examples
+pnpm check          # typecheck + eslint + 单测/集成测试 + contracts 快照
+pnpm e2e            # M1 纵向闭环 + 门禁审批 + SAP 链路 + 多执行器派发 + Hook 全链路（009 #1–#5/#8/#9/#11/#16）
+pnpm eval:golden    # golden set 离线评测（fake provider 确定性输出 evals/report.json）
+pnpm build          # 所有包按依赖拓扑序构建（产物在 .gitignore 内）
+pnpm contract:gen   # 从 protocol 重新生成 contracts/json-schema 与 examples
+pnpm hooks:reconcile # Hook 对账（只读差异报告；默认退出 0，--fail-on-diff 时 3）
 ```
 
 服务端 AI 走 BYOK（OpenAI 兼容 / DeepSeek / Azure，Key 只在服务端）；无 Key 时默认 `fake` provider，e2e 与离线开发不依赖网络。配置项见 [.env.example](.env.example) 与 [docs/005](docs/005-clients-and-ai.md)。

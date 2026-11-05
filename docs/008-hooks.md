@@ -140,7 +140,7 @@ hooks:
 | `SA_HOOKS_TIMEOUT_MS` | `10000` | 单次 HTTP 超时 |
 
 - 出站队列复用 v1/v4 的 `outbox` 表：`target = 'hook:<id>'`、`id = '<eventId>:<hookId>'`（重扫幂等），payload 存信封 JSON；`status ∈ PENDING/SENT/DEAD/CANCELLED`，`attempts/next_attempt_at/last_error/sent_at/recent` 由 S4 worker 维护。S4 worker 与 SAP writeback 各扫各的 target，互不影响。
-- 管理端点：`GET /hooks`（admin，outbox 深度 + `lastError` + 最近一次尝试摘要）、`POST /hooks/{id}/replay`（admin + `Idempotency-Key`，按 `eventId` 重放死信/已发事件，保持 `idempotencyKey` 不变；重复 replay 幂等）。见 003 §4.7。
+- 管理端点：`GET /hooks`（admin，outbox 深度 + `lastError` + 最近一次尝试摘要）、`POST /hooks/{id}/replay`（admin + `Idempotency-Key`，按 `eventId` 重放死信/已发事件，保持 `idempotencyKey` 不变）。同一 `Idempotency-Key` 的重复 replay 返回缓存响应：不重复投递、不重复写 `hook.delivered`；用新 key 显式重放已发事件会再 POST 同一 `idempotencyKey`，目标按幂等键去重、不会重复建单，每次成功投递各记一条 `hook.delivered`。见 003 §4.7。
 - 不做 pause/resume、不做 UI、不默认发聊天通知。
 - 具体适配器（JIRA/CHARM/Confluence/Teams）按本契约实现，放 `packages/sap-adapter` 之外的独立包或企业私有仓库；本仓库只提供 `examples/hooks/*.yaml` 占位样例。
 

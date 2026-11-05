@@ -5,3 +5,4 @@ export * from './scheduling.js';
 export * from './template.js';
 export * from './context.js';
 export * from './stage.js';
+export * from './checklist.js';

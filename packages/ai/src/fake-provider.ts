@@ -4,7 +4,13 @@ import type {
   ChatMessage,
   ModelProvider,
 } from './types.js';
-import { REQUIREMENT_ANALYSIS_STAGE_KEY } from './schema.js';
+import {
+  INTAKE_STAGE_KEY,
+  DEV_SPEC_STAGE_KEY,
+  TEST_DOC_STAGE_KEY,
+  KNOWLEDGE_ENTRY_STAGE_KEY,
+  REQUIREMENT_ANALYSIS_STAGE_KEY,
+} from './stages.js';
 
 export interface FakeModelProviderOptions {
   /** Scripted responses consumed in order; an Error makes `complete` reject. */
@@ -60,6 +66,98 @@ export function fakeRequirementAnalysisOutput(messages: readonly ChatMessage[]):
   return JSON.stringify(output, null, 2);
 }
 
+function fakeIntakeOutput(messages: readonly ChatMessage[]): string {
+  const demand = extractDemandSnapshot(messages);
+  const title = typeof demand.title === 'string' && demand.title.length > 0 ? demand.title : '需求';
+  const description = typeof demand.description === 'string' ? demand.description : '';
+  return JSON.stringify(
+    {
+      summary: `已受理：${title}`,
+      openQuestions: description.length === 0 ? ['需求描述为空，需要补充业务背景'] : [],
+      inScope: [description.length === 0 ? '待澄清' : description.slice(0, 200)],
+    },
+    null,
+    2,
+  );
+}
+
+function fakeDevSpecOutput(messages: readonly ChatMessage[]): string {
+  const demand = extractDemandSnapshot(messages);
+  const title = typeof demand.title === 'string' && demand.title.length > 0 ? demand.title : '需求';
+  return JSON.stringify(
+    {
+      summary: `${title} 的开发说明`,
+      changes: [
+        {
+          file: 'zsales_aggregate.prog.abap',
+          description: '新增按销售组织汇总开票金额的取数逻辑',
+        },
+      ],
+      testPlan: ['空结果返回 0', '金额与 MARA 一致'],
+      risks: ['数据量大时需要分页'],
+    },
+    null,
+    2,
+  );
+}
+
+function fakeTestDocOutput(messages: readonly ChatMessage[]): string {
+  const demand = extractDemandSnapshot(messages);
+  const title = typeof demand.title === 'string' && demand.title.length > 0 ? demand.title : '需求';
+  const criteria = stringList(demand.acceptanceCriteria);
+  const cases = (criteria.length > 0 ? criteria : ['交付内容满足需求描述']).map(
+    (criterion, index) => ({
+      id: `TC-${String(index + 1).padStart(3, '0')}`,
+      title: criterion,
+      steps: ['准备测试数据', '执行取数程序', '核对输出'],
+      expected: criterion,
+    }),
+  );
+  return JSON.stringify(
+    {
+      summary: `${title} 的测试文档`,
+      cases,
+      environment: 'SAP 测试系统（虚构数据）',
+    },
+    null,
+    2,
+  );
+}
+
+function fakeKnowledgeEntryOutput(messages: readonly ChatMessage[]): string {
+  const demand = extractDemandSnapshot(messages);
+  const title = typeof demand.title === 'string' && demand.title.length > 0 ? demand.title : '需求';
+  return JSON.stringify(
+    {
+      summary: `${title} 的验收归档`,
+      tags: ['PDO', '取数'],
+      decisions: ['按需求分析确认的范围交付', '遗留问题进入后续迭代'],
+    },
+    null,
+    2,
+  );
+}
+
+/** Deterministic per-stage output used by the fake provider (no network). */
+export function fakeStageOutput(
+  stageKey: string,
+  messages: readonly ChatMessage[],
+): string {
+  switch (stageKey) {
+    case INTAKE_STAGE_KEY:
+      return fakeIntakeOutput(messages);
+    case DEV_SPEC_STAGE_KEY:
+      return fakeDevSpecOutput(messages);
+    case TEST_DOC_STAGE_KEY:
+      return fakeTestDocOutput(messages);
+    case KNOWLEDGE_ENTRY_STAGE_KEY:
+      return fakeKnowledgeEntryOutput(messages);
+    case REQUIREMENT_ANALYSIS_STAGE_KEY:
+    default:
+      return fakeRequirementAnalysisOutput(messages);
+  }
+}
+
 function estimateTokens(text: string): number {
   return Math.max(1, Math.ceil(text.length / 4));
 }
@@ -83,7 +181,7 @@ export class FakeModelProvider implements ModelProvider {
     if (scripted instanceof Error) throw scripted;
     const stageKey = request.metadata?.stageKey ?? REQUIREMENT_ANALYSIS_STAGE_KEY;
     const text =
-      scripted ?? this.stageOutputs[stageKey] ?? fakeRequirementAnalysisOutput(request.messages);
+      scripted ?? this.stageOutputs[stageKey] ?? fakeStageOutput(stageKey, request.messages);
     const promptTokens = totalPromptTokens(request.messages);
     const completionTokens = estimateTokens(text);
     return {

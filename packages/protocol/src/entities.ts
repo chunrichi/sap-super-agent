@@ -9,6 +9,7 @@ import {
   demandSourceSchema,
   demandStatusSchema,
   executorKindSchema,
+  notificationKindSchema,
   prioritySchema,
   presenceStateSchema,
   roleSchema,
@@ -241,6 +242,20 @@ export const artifactVersionSchema = z
   .strict();
 export type ArtifactVersion = z.infer<typeof artifactVersionSchema>;
 
+/**
+ * Version chain grouped by stage for `GET /demands/{id}` (docs/003 §2.4):
+ * artifacts are immutable, so prior versions stay in the chain and keep their
+ * `stale` markers.
+ */
+export const artifactChainSchema = z
+  .object({
+    stageKey: z.string().min(1).nullable(),
+    artifacts: z.array(artifactSchema),
+    versions: z.array(artifactVersionSchema),
+  })
+  .strict();
+export type ArtifactChain = z.infer<typeof artifactChainSchema>;
+
 // ---------------------------------------------------------------------------
 // Approval (docs/003 §2.5)
 // ---------------------------------------------------------------------------
@@ -251,6 +266,9 @@ export const approvalSchema = z
     demandId: demandIdSchema,
     stageRunId: ulidSchema,
     gateKey: z.string().min(1),
+    /** The gate is bound to one immutable artifact version (docs/003 §2.5). */
+    artifactId: ulidSchema,
+    artifactVersion: z.number().int().positive(),
     state: approvalStateSchema,
     requiredRole: roleSchema,
     decision: approvalDecisionSchema.nullable(),
@@ -263,6 +281,29 @@ export const approvalSchema = z
   })
   .strict();
 export type Approval = z.infer<typeof approvalSchema>;
+
+// ---------------------------------------------------------------------------
+// Notification (docs/003 §2.5, docs/005 §2.2): in-product "必须你处理" alerts.
+// v1 does not model users/roles; `requiredRole` records who should act and the
+// local mode surfaces every unread notification to user/admin tokens.
+// ---------------------------------------------------------------------------
+
+export const notificationSchema = z
+  .object({
+    id: ulidSchema,
+    demandId: demandIdSchema,
+    stageRunId: ulidSchema.nullable(),
+    approvalId: ulidSchema.nullable(),
+    kind: notificationKindSchema,
+    requiredRole: roleSchema.nullable(),
+    title: z.string().min(1).max(200),
+    body: z.string().nullable(),
+    createdAt: isoDateTimeSchema,
+    readAt: isoDateTimeSchema.nullable(),
+  })
+  .strict();
+export type Notification = z.infer<typeof notificationSchema>;
+
 
 // ---------------------------------------------------------------------------
 // Executor (docs/003 §2.6)

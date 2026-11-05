@@ -120,5 +120,10 @@ export function resolveConfig(options: ServerOptions): ServerConfig {
     logger: options.logger ?? false,
     version: options.version ?? DEFAULT_VERSION,
     wsPingMs: positiveInt(options.wsPingMs, DEFAULT_WS_PING_MS, 'wsPingMs'),
+    // --- H1: gate timeout override (null = template timeoutDays) ---
+    gateTimeoutMs:
+      options.gateTimeoutMs === undefined
+        ? null
+        : positiveInt(options.gateTimeoutMs, 0, 'gateTimeoutMs'),
   };
 }

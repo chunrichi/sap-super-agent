@@ -1,0 +1,516 @@
+{
+  "suiteId": "pdo-requirement-analysis-golden",
+  "version": 1,
+  "promptVersion": "requirement-analysis/v1",
+  "note": "脱敏虚构需求（docs/009 §3）；humanBaseline 为人工基线摘要，editedLines/totalLines 用于估算人工修改行占比；不得包含真实客户数据。",
+  "cases": [
+    {
+      "id": "r-3001",
+      "title": "销售组织开票金额汇总",
+      "description": "按销售组织与会计期间汇总开票金额，输出可下钻的 ALV 列表，供财务月结核对。",
+      "acceptanceCriteria": [
+        "金额与 VBRK/VBRP 一致",
+        "空结果返回 0",
+        "支持按销售组织筛选"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 5,
+        "totalLines": 48,
+        "summary": "人工补充了权限与刷新频率说明"
+      }
+    },
+    {
+      "id": "r-3002",
+      "title": "采购订单到货逾期提醒",
+      "description": "每天扫描采购订单行项目，找出预计到货日早于今天且未完全收货的条目，生成提醒清单。",
+      "acceptanceCriteria": [
+        "逾期判定以系统日期为准",
+        "已删除的订单行不参与提醒"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 3,
+        "totalLines": 36,
+        "summary": "人工补齐了收件人范围"
+      }
+    },
+    {
+      "id": "r-3003",
+      "title": "物料主数据重复检查",
+      "description": "在物料创建前按物料描述与基本计量单位做相似度检查，命中疑似重复时给创建人提示。",
+      "acceptanceCriteria": [
+        "相似物料给出候选列表",
+        "不阻断创建，仅提示",
+        "检查响应时间小于 2 秒"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 8,
+        "totalLines": 52,
+        "summary": "人工调整了相似度阈值说明"
+      }
+    },
+    {
+      "id": "r-3004",
+      "title": "公司间交易对账报表",
+      "description": "按公司代码与会计年度核对公司间交易，输出差异明细（凭证号、金额、对方公司）。",
+      "acceptanceCriteria": [
+        "差异金额按本位币展示",
+        "支持导出 Excel"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 4,
+        "totalLines": 44,
+        "summary": "人工补充导出字段说明"
+      }
+    },
+    {
+      "id": "r-3005",
+      "title": "供应商付款账期预警",
+      "description": "识别付款建议中账期即将到期或已逾期的供应商，按优先级排序。",
+      "acceptanceCriteria": [
+        "逾期天数按付款基准日计算",
+        "金额与 F110 付款建议一致"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 2,
+        "totalLines": 30,
+        "summary": "仅小幅修改措辞"
+      }
+    },
+    {
+      "id": "r-3006",
+      "title": "生产订单工序报工异常监控",
+      "description": "监控近 24 小时内报工数量超过工序计划数量的生产订单，生成异常清单。",
+      "acceptanceCriteria": [
+        "超报比例超过 5% 才提示",
+        "包含订单号、工序、报工数量"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 6,
+        "totalLines": 46,
+        "summary": "人工补充异常阈值配置项"
+      }
+    },
+    {
+      "id": "r-3007",
+      "title": "客户信用额度临时调整审请",
+      "description": "业务员可提交客户信用额度临时调整申请，审批通过后生效指定天数。",
+      "acceptanceCriteria": [
+        "申请需填写原因与有效期",
+        "到期后自动恢复原额度",
+        "操作留痕可追溯"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 7,
+        "totalLines": 56,
+        "summary": "人工补充审批层级"
+      }
+    },
+    {
+      "id": "r-3008",
+      "title": "库存周转率看板",
+      "description": "按物料组与工厂计算近 12 个月库存周转率，支持月份对比。",
+      "acceptanceCriteria": [
+        "周转率公式与既有报表一致",
+        "无库存时周转率显示为空"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 3,
+        "totalLines": 38,
+        "summary": "人工确认公式口径"
+      }
+    },
+    {
+      "id": "r-3009",
+      "title": "多币种费用报销汇率校验",
+      "description": "校验报销凭证中的汇率与财务基准汇率一致，偏差超过 0.5% 时拦截并提示。",
+      "acceptanceCriteria": [
+        "按凭证日期取基准汇率",
+        "偏差超过阈值时给出提示",
+        "支持手工覆盖并记录原因"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 9,
+        "totalLines": 64,
+        "summary": "人工补充覆盖原因必填"
+      }
+    },
+    {
+      "id": "r-3010",
+      "title": "BOM 变更影响分析",
+      "description": "BOM 组件变更时列出受影响的工单与下游计划订单，供计划员评估。",
+      "acceptanceCriteria": [
+        "列出的工单需包含状态",
+        "支持按工厂过滤"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 5,
+        "totalLines": 42,
+        "summary": "人工修改影响范围说明"
+      }
+    },
+    {
+      "id": "r-3011",
+      "title": "应收账款账龄分析",
+      "description": "按客户与账龄区间（0-30/31-60/61-90/90+）汇总应收账款余额。",
+      "acceptanceCriteria": [
+        "余额与 FBL5N 一致",
+        "账龄按到期日计算"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 3,
+        "totalLines": 40,
+        "summary": "人工补充区间边界说明"
+      }
+    },
+    {
+      "id": "r-3012",
+      "title": "交货单拣配完整性检查",
+      "description": "发货前检查交货单是否全部拣配，未拣配行项目高亮并在过账前提示。",
+      "acceptanceCriteria": [
+        "未拣配行项目必须高亮",
+        "提示不阻断过账，由用户确认"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 2,
+        "totalLines": 32,
+        "summary": "基本无需修改"
+      }
+    },
+    {
+      "id": "r-3013",
+      "title": "成本中心预算超支预警",
+      "description": "预算执行率达到 80%/100% 时分别向成本中心负责人发送预警。",
+      "acceptanceCriteria": [
+        "按年度预算与实际过账计算",
+        "两级阈值可配置"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 6,
+        "totalLines": 50,
+        "summary": "人工补充接收人维护方式"
+      }
+    },
+    {
+      "id": "r-3014",
+      "title": "委外加工领料差异对账",
+      "description": "核对委外加工订单的组件领料数量与理论耗用，输出差异明细。",
+      "acceptanceCriteria": [
+        "差异按订单行展示",
+        "支持按供应商筛选"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 4,
+        "totalLines": 44,
+        "summary": "人工修改差异计算口径"
+      }
+    },
+    {
+      "id": "r-3015",
+      "title": "固定资产盘点任务生成",
+      "description": "按资产类别与成本中心自动生成盘点任务并分配给资产管理员。",
+      "acceptanceCriteria": [
+        "任务分配按成本中心负责人",
+        "盘点结果需上传附件"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 8,
+        "totalLines": 58,
+        "summary": "人工补充附件格式"
+      }
+    },
+    {
+      "id": "r-3016",
+      "title": "销售价格主数据变更日志",
+      "description": "记录销售价格条件的创建与变更，保留旧值供审计查询。",
+      "acceptanceCriteria": [
+        "记录变更前后值",
+        "查询支持按物料与时间范围"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 3,
+        "totalLines": 34,
+        "summary": "人工补充审计字段"
+      }
+    },
+    {
+      "id": "r-3017",
+      "title": "车间在制品数量快照",
+      "description": "每天固定时点快照车间在制品数量，支持按工序查看趋势。",
+      "acceptanceCriteria": [
+        "快照时点可配置",
+        "趋势图支持 7/30 天切换"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 7,
+        "totalLines": 54,
+        "summary": "人工确认快照时点"
+      }
+    },
+    {
+      "id": "r-3018",
+      "title": "供应商主数据质量评分",
+      "description": "按完整度、及时性、合规标记计算供应商主数据质量评分并输出排名。",
+      "acceptanceCriteria": [
+        "评分维度权重可配置",
+        "排名支持按采购品类筛选"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 10,
+        "totalLines": 66,
+        "summary": "人工调整权重说明"
+      }
+    },
+    {
+      "id": "r-3019",
+      "title": "生产订单结算差异分析",
+      "description": "比较生产订单计划成本与实际成本，输出差异原因分类。",
+      "acceptanceCriteria": [
+        "差异按成本要素分类",
+        "与 CO88 结算结果一致"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 5,
+        "totalLines": 46,
+        "summary": "人工补充分类规则"
+      }
+    },
+    {
+      "id": "r-3020",
+      "title": "跨工厂调拨在途跟踪",
+      "description": "跟踪跨工厂调拨单的发出与收货状态，识别超过 3 天未收货的在途单。",
+      "acceptanceCriteria": [
+        "在途天数按发出过账日期计算",
+        "超过阈值列入异常清单"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 4,
+        "totalLines": 40,
+        "summary": "人工补充异常清单字段"
+      }
+    },
+    {
+      "id": "r-3021",
+      "title": "销售预测准确率统计",
+      "description": "按物料与月份比较预测数量与实际销售数量，计算预测准确率。",
+      "acceptanceCriteria": [
+        "准确率公式为 1-|预测-实际|/实际",
+        "无实际销售时不计入统计"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 6,
+        "totalLines": 48,
+        "summary": "人工确认异常值处理"
+      }
+    },
+    {
+      "id": "r-3022",
+      "title": "客户退货原因分类维护",
+      "description": "维护退货原因分类字典，退货单据必须选择原因分类。",
+      "acceptanceCriteria": [
+        "原因分类字典可维护",
+        "退货保存时校验必填"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 2,
+        "totalLines": 28,
+        "summary": "基本无需修改"
+      }
+    },
+    {
+      "id": "r-3023",
+      "title": "外币评估结果核对报表",
+      "description": "按评估日期输出外币科目评估结果，与财务凭证核对。",
+      "acceptanceCriteria": [
+        "评估结果按科目与币种展示",
+        "差异超过 0.01 高亮"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 5,
+        "totalLines": 44,
+        "summary": "人工补充高亮规则"
+      }
+    },
+    {
+      "id": "r-3024",
+      "title": "质量检验批超期预警",
+      "description": "识别超过计划完成日期仍未做出使用决策的检验批，向质量工程师预警。",
+      "acceptanceCriteria": [
+        "超期按系统日期计算",
+        "预警每天发送一次"
+      ],
+      "expected": {
+        "schemaPass": true,
+        "checklist": {
+          "sections_present": true,
+          "acceptance_covered": true
+        }
+      },
+      "humanBaseline": {
+        "editedLines": 3,
+        "totalLines": 36,
+        "summary": "人工补充发送时间"
+      }
+    }
+  ]
+}

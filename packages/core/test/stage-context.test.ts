@@ -39,6 +39,8 @@ describe('stage invariants', () => {
       outputArtifactKind: 'code_change' as const,
       gate: 'none' as const,
       maxAttempts: 2,
+      autonomy: 'auto' as const,
+      requiredRoles: [],
       checklist: [],
     };
     const empty = { byKind: new Map<ArtifactKind, ArtifactRef>() };

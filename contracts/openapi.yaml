@@ -3,9 +3,10 @@ info:
   title: SAP Super Agent Control Plane
   version: 0.0.0
   description: |
-    S0 (walking skeleton) HTTP surface of the control plane. Machine-readable
-    entity schemas live in `contracts/json-schema/` and are generated from
-    `@sap-superagent/protocol`; the narrative contract is docs/003.
+    S0–S1 HTTP surface of the control plane: walking skeleton plus stage
+    templates, approval gates, artifact version chains and notifications (H1).
+    Machine-readable entity schemas live in `contracts/json-schema/` and are
+    generated from `@sap-superagent/protocol`; the narrative contract is docs/003.
 servers:
   - url: http://127.0.0.1:3080/api/v1
     description: M1 local mode (CLI `sap-superagent dev`)
@@ -16,6 +17,9 @@ tags:
   - name: executors
   - name: tasks
   - name: demands
+  - name: templates
+  - name: approvals
+  - name: notifications
   - name: events
   - name: admin
 paths:
@@ -296,6 +300,140 @@ paths:
         - $ref: '#/components/parameters/DemandId'
       responses:
         '200': { description: Cancelled demand }
+  /demands/{id}/artifacts:
+    post:
+      tags: [demands]
+      summary: Human confirmation/adjustment of an artifact (new immutable version, docs/003 §2.4)
+      parameters:
+        - $ref: '#/components/parameters/DemandId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, contentType, checksum]
+              properties:
+                kind: { type: string, enum: [requirement_analysis, dev_spec, code_change, test_doc, knowledge_entry, free_note] }
+                contentType: { type: string }
+                contentBase64: { type: string }
+                contentUrl: { type: string, format: uri }
+                checksum: { type: string }
+                summary: { type: string }
+                title: { type: string }
+      responses:
+        '200':
+          description: Updated artifact + its new version
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/create-demand-artifact-response.json
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /templates:
+    get:
+      tags: [templates]
+      summary: Read-only stage templates loaded at startup (docs/003 §2.7)
+      responses:
+        '200':
+          description: Loaded templates + default template id
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [templates, defaultTemplateId, serverTime]
+                properties:
+                  templates:
+                    type: array
+                    items: { $ref: ./json-schema/stage-template.json }
+                  defaultTemplateId: { type: string }
+                  serverTime: { type: string, format: date-time }
+  /approvals:
+    get:
+      tags: [approvals]
+      summary: My pending gates (local mode; role enforcement deferred to SAP/SSO)
+      parameters:
+        - name: assignee
+          in: query
+          schema: { type: string }
+        - name: state
+          in: query
+          schema: { type: string, enum: [pending, approved, rejected, withdrawn, expired] }
+      responses:
+        '200':
+          description: Approval list
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/list-approvals-response.json
+  /approvals/{id}/decisions:
+    post:
+      tags: [approvals]
+      summary: Approve/reject a gate; terminal approvals return 409 (idempotent read)
+      parameters:
+        - $ref: '#/components/parameters/ApprovalId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./json-schema/approval-decision-body.json
+      responses:
+        '200':
+          description: Decided approval
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/approval-decision-response.json
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Approval already decided, or its artifact version is stale }
+  /approvals/{id}/withdraw:
+    post:
+      tags: [approvals]
+      summary: Withdraw a pending gate (stage starts a new attempt)
+      parameters:
+        - $ref: '#/components/parameters/ApprovalId'
+      responses:
+        '200':
+          description: Withdrawn approval
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/withdraw-approval-response.json
+        '409': { description: Approval is not pending }
+  /notifications:
+    get:
+      tags: [notifications]
+      summary: In-product "必须你处理" notifications (docs/003 §2.5)
+      parameters:
+        - name: state
+          in: query
+          schema: { type: string, enum: [unread, all], default: unread }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: Notification list
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/list-notifications-response.json
+  /notifications/{id}/read:
+    post:
+      tags: [notifications]
+      summary: Mark a notification as read
+      parameters:
+        - $ref: '#/components/parameters/NotificationId'
+      responses:
+        '200':
+          description: Updated notification
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/mark-notification-read-response.json
+        '404': { $ref: '#/components/responses/NotFound' }
   /events:
     get:
       tags: [events]
@@ -328,6 +466,20 @@ paths:
               schema:
                 $ref: ./json-schema/task.json
         '403': { $ref: '#/components/responses/Unauthorized' }
+  /admin/approvals/{id}/expire:
+    post:
+      tags: [admin]
+      summary: Force-expire a stuck gate in M1 (same effects as the timeout sweeper)
+      parameters:
+        - $ref: '#/components/parameters/ApprovalId'
+      responses:
+        '200':
+          description: Expired approval (idempotent for non-pending states)
+          content:
+            application/json:
+              schema:
+                $ref: ./json-schema/approval-decision-response.json
+        '404': { $ref: '#/components/responses/NotFound' }
 components:
   securitySchemes:
     bearerAuth:
@@ -345,6 +497,16 @@ components:
       required: true
       schema: { type: string }
     DemandId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    ApprovalId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    NotificationId:
       name: id
       in: path
       required: true

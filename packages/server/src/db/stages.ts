@@ -149,3 +149,11 @@ export function insertStageAttempt(db: DatabaseSync, attempt: StageAttempt): voi
     attempt.finishedAt,
   );
 }
+
+/** Whether a run-ledger row already exists for one (stageRun, attempt) pair. */
+export function hasStageAttempt(db: DatabaseSync, stageRunId: string, attempt: number): boolean {
+  const row = db
+    .prepare('SELECT 1 AS present FROM stage_attempts WHERE stage_run_id = ? AND attempt = ?')
+    .get(stageRunId, attempt) as { present?: number } | undefined;
+  return row !== undefined;
+}

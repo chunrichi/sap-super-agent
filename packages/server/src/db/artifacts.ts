@@ -220,3 +220,93 @@ export function latestArtifactRefsByKind(
   }
   return refs;
 }
+
+/**
+ * Version chains grouped by stage for `GET /demands/{id}` (docs/003 §2.4).
+ * Artifacts are immutable, so every historical version stays in its chain; the
+ * `stale` marker lives on the version row.
+ */
+export function artifactChainsForDemand(
+  db: DatabaseSync,
+  demandId: string,
+): Array<{ stageKey: string | null; artifacts: Artifact[]; versions: ArtifactVersion[] }> {
+  const artifacts = listArtifactsForDemand(db, demandId);
+  const versions = listArtifactVersionsForDemand(db, demandId);
+  const versionsByArtifact = new Map<string, ArtifactVersion[]>();
+  for (const version of versions) {
+    const list = versionsByArtifact.get(version.artifactId);
+    if (list === undefined) versionsByArtifact.set(version.artifactId, [version]);
+    else list.push(version);
+  }
+  const chains: Array<{
+    stageKey: string | null;
+    artifacts: Artifact[];
+    versions: ArtifactVersion[];
+  }> = [];
+  const byStage = new Map<string | null, (typeof chains)[number]>();
+  for (const artifact of artifacts) {
+    let chain = byStage.get(artifact.stageKey);
+    if (chain === undefined) {
+      chain = { stageKey: artifact.stageKey, artifacts: [], versions: [] };
+      byStage.set(artifact.stageKey, chain);
+      chains.push(chain);
+    }
+    chain.artifacts.push(artifact);
+    chain.versions.push(...(versionsByArtifact.get(artifact.id) ?? []));
+  }
+  return chains;
+}
+
+// --- H1: artifact version chains, stale propagation and supersede -------------
+
+/** Newest artifact of a kind for a demand (kinds are unique per template). */
+export function findArtifactByKind(
+  db: DatabaseSync,
+  demandId: string,
+  kind: ArtifactKind,
+): Artifact | null {
+  const row = db
+    .prepare('SELECT * FROM artifacts WHERE demand_id = ? AND kind = ? ORDER BY created_at DESC LIMIT 1')
+    .get(demandId, kind) as unknown as ArtifactRow | undefined;
+  return row === undefined ? null : rowToArtifact(row);
+}
+
+/** Artifact produced by a stage (used for downstream stale propagation). */
+export function findArtifactForStage(
+  db: DatabaseSync,
+  demandId: string,
+  stageKey: string,
+): Artifact | null {
+  const row = db
+    .prepare(
+      'SELECT * FROM artifacts WHERE demand_id = ? AND stage_key = ? ORDER BY created_at DESC LIMIT 1',
+    )
+    .get(demandId, stageKey) as unknown as ArtifactRow | undefined;
+  return row === undefined ? null : rowToArtifact(row);
+}
+
+export function updateArtifact(db: DatabaseSync, artifact: Artifact): void {
+  db.prepare(
+    'UPDATE artifacts SET state = ?, current_version = ?, title = ?, updated_at = ? WHERE id = ?',
+  ).run(artifact.state, artifact.currentVersion, artifact.title, artifact.updatedAt, artifact.id);
+}
+
+export function listVersionsForArtifact(db: DatabaseSync, artifactId: string): ArtifactVersion[] {
+  const rows = db
+    .prepare('SELECT * FROM artifact_versions WHERE artifact_id = ? ORDER BY version ASC')
+    .all(artifactId) as unknown as ArtifactVersionRow[];
+  return rows.map(rowToArtifactVersion);
+}
+
+export function markArtifactVersionStale(
+  db: DatabaseSync,
+  artifactId: string,
+  version: number,
+  stale: boolean,
+): void {
+  db.prepare('UPDATE artifact_versions SET stale = ? WHERE artifact_id = ? AND version = ?').run(
+    stale ? 1 : 0,
+    artifactId,
+    version,
+  );
+}

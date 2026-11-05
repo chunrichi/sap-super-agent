@@ -63,10 +63,12 @@ stateDiagram-v2
 规则：
 
 - 一个 Demand 的一个 Stage 只有一个 StageRun；重试/退回都在同一 StageRun 上增加 `attempt`，旧 attempt 的事件与工件保留。
-- 阶段完成必须产出声明的输出工件，且通过 **schema 校验 + 模板 checklist**（引用完整性、必填项覆盖、上游版本一致）；只过 schema 不算完成。
+- 阶段完成必须产出声明的输出工件，且通过 **schema 校验 + 模板 checklist**（引用完整性、必填项覆盖、上游版本一致）；只过 schema 不算完成。checklist 断言见 §2.7，失败时按 `maxAttempts` 重试，超过上限转 `waiting_human`，且**不落半成品工件**。
 - 每次 `server-ai` 执行都记一条 run ledger（模型、prompt 版本、输入工件版本、token、成本、耗时、失败原因），落在 `stage_attempts`，供成本统计与复现（实现补充）。
-- 上游工件产生新版本时，下游已生成工件标记 `stale` 并阻断继续推进，直到重新生成或人工确认。
-- 门禁由模板声明（`gate: none | human-approve`）。没有门禁的阶段全自动。
+- 上游工件产生新版本时，下游已生成工件标记 `stale` 并阻断继续推进（门禁拒绝历史版本的批准），直到重新生成或人工确认。
+- 门禁由模板声明（`gate: none | {gateKey, role}`）。没有门禁的阶段按 `autonomy` 决定是否自动推进（§2.7）：`auto` 直接进入下一阶段，`observe` 产出 draft 工件并停在 `waiting_human`。
+- 进入门禁时：输出工件状态置 `in_review`，创建一条绑定 `(artifactId, version)` 的 Approval，StageRun 置 `waiting_human`，写 `approval.requested` 事件与通知。审批通过后工件置 `approved`、阶段 `done` 并推进；驳回后工件置 `rejected`、阶段开新 attempt（重新生成新版本，不覆盖）；超时/撤回后阶段同样开新 attempt（超过 `maxAttempts` 则保留 `failed` 并通知人工）。
+- `vscode` 阶段就绪时由服务端按模板自动创建 Task（`requiredRoles` 来自模板）；AI 阶段由服务端 stage runner 消费 `ready` 的 StageRun。
 
 ### 2.3 任务 Task 与指派 Assignment
 
@@ -101,17 +103,24 @@ Assignment 状态：`active → completed | released | expired`。
 
 状态：`draft → generated → in_review → approved | rejected`；新版本使旧版本 `superseded`。
 
-- 工件不可变：任何修改产生新 `version`，`artifactId` 不变，`contentRef` 指向存储对象。
+- 工件不可变：任何修改产生新 `version`，`artifactId` 不变，`contentRef` 指向存储对象。旧版本的字节与元数据永久保留，版本链可由 `GET /demands/{id}` 的 `artifactChains`（按阶段分组）追溯。
 - 工件必须声明 `kind`（`requirement_analysis`、`dev_spec`、`code_change`、`test_doc`、`knowledge_entry`、`free_note`）、`contentType`、`checksum`。
 - 工件来源：`ai`（服务端生成）、`human`（SAP 或 Web 编辑）、`agent`（客户端回写）、`import`（外部系统）。
+- 人工"确认/调整"通过 `POST /demands/{id}/artifacts` 产生同 `kind` 的新版本（`authorType: human`）：已存在该 kind 的工件时版本号 +1，否则新建工件（v1）。版本号只增不减，不覆盖历史。
+- `stale` 标记落在 `artifact_versions`（每个版本独立）：上游同 kind 出现更新版本时，引用旧版本的下游工件当前版本置 `stale=true`，写 `artifact.stale` 事件；门禁批准被拒绝（`409`，`details.reason=artifact_stale`），重新生成或人工确认后清除。
 
 ### 2.5 门禁 Approval
 
 状态：`pending → approved | rejected`；`pending → withdrawn`（发起人撤回）；`pending → expired`（`timeoutDays` 到期）。
 `approved` 后阶段进入下一阶段；`rejected` 后阶段回 `running`（新 attempt）或按模板 `cancelled`。
 
-- 门禁绑定 `(demandId, stageRunId, gateKey)`；同一门禁重复审批幂等，终态后拒绝再次决策。
-- 审批人由模板声明的角色决定；角色枚举：`requester`（业务方）、`consultant`（需求顾问/PDO）、`developer`、`ops`。控制平面只做规则校验，身份来自 SAP 或控制平面账号。
+- 门禁绑定 `(demandId, stageRunId, gateKey)`，并绑定**具体工件版本 `(artifactId, artifactVersion)`**：审批的对象是那一版内容，之后出现新版本时该 Approval 仍指向旧版本（旧版本被标 `stale` 时批准被拒绝）。
+- 同一门禁重复审批幂等：终态（`approved/rejected/withdrawn/expired`）后再决策返回 `409 conflict`，响应携带当前状态。
+- 审批人由模板声明的角色决定；角色枚举：`requester`（业务方）、`consultant`（需求顾问/PDO）、`developer`、`ops`。控制平面只做规则校验，身份来自 SAP 或控制平面账号。**M1 本地模式不建模细粒度权限**（HANDOFF §7）：用户/管理员 token 均可决策，`decidedBy` 记录实际操作人；`assignee=me` 返回本地待办。
+- **v1 实现说明（单角色门禁）**：协议 `gate` 只声明一个 `role`。任务书把 G3 描述为"consultant + developer 评审"，v1 以 `consultant` 作为 G3 的主审批角色，开发者的实现证据由 vscode 阶段完成判定（schema + checklist）与工件版本链体现；多角色会签留给后续版本，不为此扩展协议。
+- 到期：`expiresAt = createdAt + timeoutDays`，由 sweeper 周期检查（生产默认每小时；测试可注入时钟）。到期后 Approval 置 `expired`，阶段按失败重试规则开新 attempt，写 `approval.expired` 事件与通知；`withdrawn` 同理（不标记工件为 rejected）。
+- 通知：门禁请求、决策结果、过期、阶段转人工均写 `notifications` 表（`kind`、`requiredRole`、标题、正文、已读时间），`GET /notifications?state=unread` 读取；Teams 等外部渠道留待 Hook（H2 之后），不新增渠道。
+- 人工补救：`POST /admin/approvals/{id}/expire` 供 M1 运维强制过期卡住的门禁（等价于到期，写同样的事件与通知）。
 
 ### 2.6 执行器 Executor
 
@@ -132,13 +141,16 @@ Assignment 状态：`active → completed | released | expired`。
 | 字段 | 说明 |
 | --- | --- |
 | `templateId` | 模板 ID，如 `default`、`pdo` |
-| `version` | 整数；Demand 创建时固定 `templateVersion`，之后模板变更只影响新 Demand |
-| `stages` | 有序阶段：`{key, name, executorKind, inputArtifactKinds[], outputArtifactKind, gate, maxAttempts, checklist[]}` |
+| `version` | 整数；Demand 创建时固定 `templateVersion`，之后模板变更只影响新 Demand；进行中 Demand 仍用旧版本（旧版本文件应继续保留在 `templates/`） |
+| `stages` | 有序阶段：`{key, name, executorKind, inputArtifactKinds[], outputArtifactKind, gate, autonomy, requiredRoles[], maxAttempts, checklist[]}` |
 | `gates` | `{gateKey, role, timeoutDays}` |
 
-- `executorKind ∈ {vscode, server-ai}`；`gate ∈ {none} | {gateKey, role}`，`none` 表示全自动。
-- `checklist` 是可判定的验收断言（如"每条验收标准可追到需求原文锚点""模板必填项齐全"），阶段完成条件 = schema + checklist。
-- 模板文件放仓库根 `templates/<templateId>.yaml`，schema 在 `packages/protocol`，启动时校验；`templateVersion` 写入 Demand。
+- `executorKind ∈ {vscode, server-ai}`；`gate ∈ {none} | {gateKey, role}`，`none` 表示无人工门禁，是否自动推进由 `autonomy` 决定。
+- `autonomy ∈ {auto, observe}`（默认 `auto`，可省略）：`auto` = 按门禁规则自动推进；`observe` = 只生成草稿并停在 `waiting_human`，不自动进入下一阶段（工件状态记 `in_review`，等待确认）。`observe` 阶段若模板未声明门禁，服务端生成一条**确认门禁**（`gateKey=confirm:<stageKey>`，`requiredRole=consultant`），审批通过后推进。新模板的 `server-ai` 阶段按 golden set 阈值默认 `observe`（`evals/thresholds.json`，人工修改率 ≥15% 即保持 observe；见 [009](009-testing.md)）。
+- `requiredRoles`：`vscode` 阶段自动创建 Task 时声明的领取角色（空表示不限）。
+- `checklist` 是可判定的验收断言 key，闭集：`sections_present`（输出工件的必填章节/字段齐全）、`inputs_referenced`（声明的上游工件存在且阶段记录的就是最新版本）、`not_stale`（上游无更新版本、输出工件未被标 stale）、`acceptance_covered`（需求每条验收标准在输出中有对应条目，结构化输出时生效）；未知 key 在加载模板时拒绝。阶段完成条件 = schema + checklist。
+- 同一模板内 stage key、gate key、output artifact kind 均唯一（保证一个 Demand 每种工件只有一条版本链）。
+- 模板文件放仓库根 `templates/<templateId>.yaml`，schema 在 `packages/protocol`，启动时校验全部模板；`templateVersion` 写入 Demand；`GET /templates` 只读返回已加载模板与默认模板 ID。
 - 内置两个模板：`default`（3 阶段：需求分析 / 开发实现 / 验收归档，门禁 G1/G3/G4）与 `pdo`（6 阶段，见 [005 §4](005-clients-and-ai.md)）。
 
 ## 3. 调度规则（确定性）
@@ -197,14 +209,20 @@ Assignment 状态：`active → completed | released | expired`。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/demands` | 本地模式创建需求；SAP 模式由 webhook 创建 |
-| GET | `/demands/{id}` | 需求、阶段、工件、门禁、事件时间线 |
+| POST | `/demands` | 本地模式创建需求；SAP 模式由 webhook 创建；可指定 `templateId`（默认 `default`），创建时固定 `templateId + version` |
+| GET | `/demands/{id}` | 需求、阶段、工件、**按阶段分组的版本链**、门禁、事件时间线 |
 | GET | `/demands?status=&assignee=&q=` | 列表与搜索 |
 | POST | `/demands/{id}/cancel` | 撤回 |
-| GET | `/approvals?assignee=me` | 我的待审批 |
-| POST | `/approvals/{id}/decisions` | `{decision: "approve"|"reject", comment}` |
+| POST | `/demands/{id}/artifacts` | 人工"确认/调整"：按 `kind` 产生新版本（`authorType: human`），触发下游 stale 传播 |
+| GET | `/templates` | 只读：已加载的阶段模板与默认模板 ID（`docs/003 §2.7` 的完整 schema） |
+| GET | `/approvals?assignee=me` | 我的待审批；`state` 可过滤（默认 `pending`） |
+| POST | `/approvals/{id}/decisions` | `{decision: "approve"\|"reject", comment}`；终态后返回 `409` |
+| POST | `/approvals/{id}/withdraw` | 发起人撤回（`pending → withdrawn`，阶段开新 attempt） |
+| GET | `/notifications?state=unread` | 门禁/阶段通知（`docs/003 §2.5`） |
+| POST | `/notifications/{id}/read` | 标记已读 |
 | GET | `/events?after=<seq>&limit=200` | 增量事件（WS 断线补拉） |
 | GET | `/healthz` `/metrics` | 运维 |
+| POST | `/admin/approvals/{id}/expire` | M1 运维：强制过期卡住的门禁（幂等，效果同超时） |
 
 ### 4.4 WebSocket 事件流
 
@@ -220,7 +238,8 @@ Assignment 状态：`active → completed | released | expired`。
 | 方向 | type | 触发 |
 | --- | --- | --- |
 | 服务端→客户端 | `task.offered` / `task.updated` / `task.cancelled` | 新可领取任务、租约状态变化、任务取消 |
-| 服务端→客户端 | `approval.requested` / `demand.updated` | 审批与需求状态变化 |
+| 服务端→客户端 | `approval.requested` / `approval.decided` / `approval.expired` / `approval.withdrawn` | 门禁请求、决策、超时、撤回 |
+| 服务端→客户端 | `artifact.stale` / `demand.updated` | 上游新版本使下游工件 stale、需求状态变化 |
 | 服务端→客户端 | `server.ping` | 保活与时钟校准 |
 | 客户端→服务端 | `client.pong` / `client.ack {seq}` | 保活与游标确认 |
 
@@ -266,7 +285,7 @@ Assignment 状态：`active → completed | released | expired`。
 | --- | --- | --- | --- |
 | 需求来源 | `SourceAdapter`：`ingest(event)` / `writeBack(demand)` / `reconcile()` | 本地 REST、SAP ICF JSON + webhook | JIRA、ServiceNow |
 | 执行器 | 4.2 协议 | `vscode`、`server-ai` | CI、ABAP 传输、DSH session |
-| AI 阶段 | `AiStage`：`buildPrompt(ctx)` / `outputSchema` / `model` / `maxCostUsd` | 需求分析、开发说明、测试文档、归档摘要 | 更多模板 |
+| AI 阶段 | `AiStage`：`buildPrompt(ctx)` / `outputSchema` / `model` / `maxCostUsd` | 受理澄清、需求分析、开发说明、测试文档、知识归档（`packages/ai` 注册表，按 stage key 解析） | 更多模板 |
 | Hook 目标 | `HookTarget`：`event` / `payload(demand, artifact)` / `send()` / `idempotencyKey` | 契约见 [008-hooks.md](008-hooks.md)，v1 提供 `http` 示例 | JIRA、CHARM、Confluence、Teams |
 | 存储 | `Repository` / `ArtifactStore` / `EventStore` | SQLite + FS；Postgres 可选 | SAP HANA |
 | 身份 | `TokenValidator` | 本地签发 token | OIDC / SAP SSO |

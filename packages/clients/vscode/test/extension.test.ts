@@ -44,6 +44,8 @@ interface StubOptions {
   approvals?: unknown[];
   notifications?: unknown[];
   events?: unknown;
+  /** Simulate a revoked/expired executor token on the heartbeat endpoint. */
+  heartbeatStatus?: number;
 }
 
 function stubControlPlane(
@@ -80,6 +82,12 @@ function stubControlPlane(
         return jsonResponse({ notification: (options.notifications ?? [])[0], serverTime: NOW });
       }
       if (url.endsWith('/heartbeat')) {
+        if (options.heartbeatStatus !== undefined) {
+          return jsonResponse(
+            { error: { code: 'unauthorized', message: 'token revoked', retryable: false } },
+            options.heartbeatStatus,
+          );
+        }
         return jsonResponse(makeHeartbeatResponse());
       }
       if (pathname.includes('/executors/') && method === 'DELETE') {
@@ -444,5 +452,25 @@ describe('等待我回答 group + realtime updates (S3)', () => {
 
     expect(calls).not.toContain(`POST /api/v1/tasks/${task.id}/claim`);
     expect(mockState.warningMessages.some((message) => message.includes('受限模式'))).toBe(true);
+  });
+});
+
+describe('revoked permissions (docs/009 #9)', () => {
+  it('clears the stored token, stops claiming and asks for re-authorization on 401', async () => {
+    stubControlPlane(makeRegisterResponse({ user: 'dev' }), [], { heartbeatStatus: 401 });
+    process.env['SAP_SUPERAGENT_TOKEN'] = '';
+    mockState.workspaceFolders = [{ uri: Uri.file(await makeFolder()), name: 'z-sales', index: 0 }];
+    const context = createMockExtensionContext();
+    await context.secrets.store('sapSuperAgent.token', 'stale-token');
+
+    await activate(context as unknown as Parameters<typeof activate>[0]);
+    await flush(12);
+
+    expect(await context.secrets.get('sapSuperAgent.token')).toBeUndefined();
+    expect(
+      mockState.warningMessages.some((message) => message.includes('重新授权')),
+    ).toBe(true);
+    // The executor stops instead of silently retrying with a dead token.
+    expect(mockState.statusBarItems[0]?.text).toContain('已暂停');
   });
 });

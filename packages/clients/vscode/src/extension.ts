@@ -388,7 +388,17 @@ async function startExecutor(context: vscode.ExtensionContext): Promise<void> {
         stopEventStream();
       }
     },
-    onError: (message) => {
+    onError: (message, error) => {
+      // docs/009 #9: revoked permission clears the stored token, stops claiming
+      // and asks the developer to re-authorize — never silently retries.
+      if (error instanceof ControlPlaneError && (error.status === 401 || error.status === 403)) {
+        void context.secrets.delete(TOKEN_SECRET_STORAGE_KEY).then(() => {
+          void vscode.window.showWarningMessage(
+            `${message}\n已清除本地保存的 token；请运行 “SAP Super Agent: 连接控制平面” 重新授权（若用 SAP_SUPERAGENT_TOKEN 环境变量提供 token，请在环境中更新）。`,
+          );
+        });
+        return;
+      }
       void vscode.window.showWarningMessage(message);
     },
     onOffers: () => {

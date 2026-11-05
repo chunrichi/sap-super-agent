@@ -25,3 +25,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm e2e
+      - run: pnpm build
+      # Offline SAP source gate: without the abap CLI the AFF/content checks skip
+      # with an explicit warning (no SAP system is ever contacted in CI).
+      - run: pnpm sap:check
+      - run: pnpm link:check

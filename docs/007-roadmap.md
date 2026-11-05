@@ -58,7 +58,7 @@
 
 ### S4 Hook 与外部系统
 
-> **状态（2026-11-05）：S4 已完成**（分支 `feat/s4-hooks`，基线 `main@4c15394`；待 Lead/用户评审与 PR）。交付：
+> **状态（2026-11-05）：S4 已完成并合入 `main`**（PR #10，merge `2b0aecf`，CI ✅ 66s；分支基线 `main@4c15394`）。交付：
 > 契约先行（`packages/protocol/src/hooks.ts` + `contracts/` 47 schemas / 7 examples / 22 routes；docs/003 §4.4/§4.5/§4.7 与 docs/008 定稿）；
 > `SA_HOOKS_CONFIG` 配置加载（缺失=全禁用，显式配置非法/缺 secret 启动即报错并给出改法；`env:NAME` secretRef 只在内存）；
 > 事件订阅 → 共享 `outbox`（`target='hook:<id>'`）→ 独立 `http` 投递 worker（HMAC `X-SA-*`、2s 指数退避上限 5min、最多 5 次、429 `Retry-After`、4xx 死信、

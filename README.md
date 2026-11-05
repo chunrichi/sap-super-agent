@@ -2,7 +2,7 @@
 
 > 面向 SAP 研发交付的 super-agent：需求记录在 SAP，编排在控制平面，编码在开发者身边的 VSCode，重复的文档工作由服务端 AI 主动完成。
 
-**状态：S0–S3 与 H2（SAP 需求系统）已完成并合入 `main`；S4（Hook 契约 + `http` 示例目标）已完成，待评审/合入。** 代码按 [路线图](docs/007-roadmap.md) 推进；`pnpm check` / `pnpm e2e` / `pnpm eval:golden` / `pnpm hooks:reconcile` 为当前验收命令。
+**状态：S0–S4 与 H2（SAP 需求系统）已完成并合入 `main`（S4 = Hook 契约 + `http` 示例目标，PR #10）。** 代码按 [路线图](docs/007-roadmap.md) 推进；`pnpm check` / `pnpm e2e` / `pnpm eval:golden` / `pnpm hooks:reconcile` 为当前验收命令。
 
 **设计演示**：[demo/index.html](demo/index.html) — 10 幕 HTML 动画，浏览器打开即可（自动播放，支持 ← → / 空格 / 重播）。
 

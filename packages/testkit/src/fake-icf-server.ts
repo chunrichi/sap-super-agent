@@ -409,11 +409,17 @@ export class FakeIcfServer {
     demandId: string | null,
     data: Record<string, unknown>,
   ): FakeSapOutboxEvent {
+    // Every type except demand.submitted carries the demand id in the payload;
+    // fill it in like the ABAP outbox job does so tests only pass the deltas.
+    const payload =
+      demandId !== null && data['demandId'] === undefined
+        ? { demandId, ...data }
+        : data;
     const event: FakeSapOutboxEvent = {
       eventId: randomUUID().replace(/-/g, ''),
       type,
       demandId,
-      data,
+      data: payload,
       state: 'NEW',
       createdAt: nowIso(this.clock),
     };

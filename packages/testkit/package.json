@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@sap-superagent/ai": "workspace:*",
+    "@sap-superagent/sap-adapter": "workspace:*",
     "@sap-superagent/server": "workspace:*"
   }
 }

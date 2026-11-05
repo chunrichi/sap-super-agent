@@ -1,0 +1,7 @@
+{
+  "schemaPassRateMin": 0.95,
+  "checklistPassRateMin": 0.9,
+  "referenceIntegrityMin": 0.9,
+  "humanEditRateMaxForAuto": 0.15,
+  "maxStageCostUsd": 0.05
+}

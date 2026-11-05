@@ -1,0 +1,680 @@
+{
+  "version": 1,
+  "suiteId": "pdo-requirement-analysis-golden",
+  "promptVersion": "requirement-analysis/v1",
+  "provider": "fake",
+  "model": "fake-model",
+  "metrics": {
+    "caseCount": 24,
+    "schemaPassRate": 1,
+    "checklistPassRate": 1,
+    "referenceIntegrity": 1,
+    "humanEditRate": 0.1115,
+    "totalTokens": 9242,
+    "totalCostUsd": 0,
+    "costPerCaseUsd": 0
+  },
+  "autonomyRecommendation": {
+    "mode": "auto",
+    "reason": "aggregate human edit rate 11.2% is below the 15% auto threshold"
+  },
+  "thresholds": {
+    "schemaPassRateMin": 0.95,
+    "checklistPassRateMin": 0.9,
+    "referenceIntegrityMin": 0.9,
+    "humanEditRateMaxForAuto": 0.15,
+    "maxStageCostUsd": 0.05
+  },
+  "passed": true,
+  "failures": [],
+  "cases": [
+    {
+      "id": "r-3001",
+      "title": "销售组织开票金额汇总",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 3 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.1042,
+      "editedLines": 5,
+      "totalLines": 48,
+      "tokens": 409,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3002",
+      "title": "采购订单到货逾期提醒",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.0833,
+      "editedLines": 3,
+      "totalLines": 36,
+      "tokens": 384,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3003",
+      "title": "物料主数据重复检查",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 3 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.1538,
+      "editedLines": 8,
+      "totalLines": 52,
+      "tokens": 407,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3004",
+      "title": "公司间交易对账报表",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.0909,
+      "editedLines": 4,
+      "totalLines": 44,
+      "tokens": 381,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3005",
+      "title": "供应商付款账期预警",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.0667,
+      "editedLines": 2,
+      "totalLines": 30,
+      "tokens": 383,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3006",
+      "title": "生产订单工序报工异常监控",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.1304,
+      "editedLines": 6,
+      "totalLines": 46,
+      "tokens": 386,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3007",
+      "title": "客户信用额度临时调整审请",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 3 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.125,
+      "editedLines": 7,
+      "totalLines": 56,
+      "tokens": 406,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3008",
+      "title": "库存周转率看板",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.0789,
+      "editedLines": 3,
+      "totalLines": 38,
+      "tokens": 379,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3009",
+      "title": "多币种费用报销汇率校验",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 3 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.1406,
+      "editedLines": 9,
+      "totalLines": 64,
+      "tokens": 408,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3010",
+      "title": "BOM 变更影响分析",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.119,
+      "editedLines": 5,
+      "totalLines": 42,
+      "tokens": 379,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3011",
+      "title": "应收账款账龄分析",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.075,
+      "editedLines": 3,
+      "totalLines": 40,
+      "tokens": 381,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3012",
+      "title": "交货单拣配完整性检查",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.0625,
+      "editedLines": 2,
+      "totalLines": 32,
+      "tokens": 381,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3013",
+      "title": "成本中心预算超支预警",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.12,
+      "editedLines": 6,
+      "totalLines": 50,
+      "tokens": 380,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3014",
+      "title": "委外加工领料差异对账",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.0909,
+      "editedLines": 4,
+      "totalLines": 44,
+      "tokens": 378,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3015",
+      "title": "固定资产盘点任务生成",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.1379,
+      "editedLines": 8,
+      "totalLines": 58,
+      "tokens": 380,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3016",
+      "title": "销售价格主数据变更日志",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.0882,
+      "editedLines": 3,
+      "totalLines": 34,
+      "tokens": 379,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3017",
+      "title": "车间在制品数量快照",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.1296,
+      "editedLines": 7,
+      "totalLines": 54,
+      "tokens": 378,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3018",
+      "title": "供应商主数据质量评分",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.1515,
+      "editedLines": 10,
+      "totalLines": 66,
+      "tokens": 381,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3019",
+      "title": "生产订单结算差异分析",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.1087,
+      "editedLines": 5,
+      "totalLines": 46,
+      "tokens": 380,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3020",
+      "title": "跨工厂调拨在途跟踪",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.1,
+      "editedLines": 4,
+      "totalLines": 40,
+      "tokens": 382,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3021",
+      "title": "销售预测准确率统计",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.125,
+      "editedLines": 6,
+      "totalLines": 48,
+      "tokens": 384,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3022",
+      "title": "客户退货原因分类维护",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.0714,
+      "editedLines": 2,
+      "totalLines": 28,
+      "tokens": 377,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3023",
+      "title": "外币评估结果核对报表",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.1136,
+      "editedLines": 5,
+      "totalLines": 44,
+      "tokens": 381,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    },
+    {
+      "id": "r-3024",
+      "title": "质量检验批超期预警",
+      "schemaPass": true,
+      "checklistPass": true,
+      "referenceIntegrity": true,
+      "checklistAssertions": [
+        {
+          "key": "sections_present",
+          "passed": true,
+          "detail": "required sections present: summary, goals, scope, assumptions, openQuestions, acceptanceCriteria, risks"
+        },
+        {
+          "key": "acceptance_covered",
+          "passed": true,
+          "detail": "all 2 acceptance criteria are covered"
+        }
+      ],
+      "expectedMatch": true,
+      "humanEditRate": 0.0833,
+      "editedLines": 3,
+      "totalLines": 36,
+      "tokens": 378,
+      "costUsd": 0,
+      "model": "fake-model",
+      "promptVersion": "requirement-analysis/v1"
+    }
+  ]
+}

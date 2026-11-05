@@ -62,3 +62,18 @@ export {
   runRequirementAnalysisStage,
   type RunRequirementAnalysisOptions,
 } from './requirement-analysis.js';
+export {
+  caseToRequirementAnalysisInput,
+  evaluateGoldenSet,
+  type GoldenAutonomyRecommendation,
+  type GoldenCase,
+  type GoldenCaseResult,
+  type GoldenChecklistAssertion,
+  type GoldenChecklistResult,
+  type GoldenEvaluationHooks,
+  type GoldenMetrics,
+  type GoldenReport,
+  type GoldenStageRunResult,
+  type GoldenSuite,
+  type GoldenThresholds,
+} from './golden.js';

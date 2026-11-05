@@ -43,7 +43,7 @@ if (!existsSync(serverDist) || !existsSync(aiDist)) {
   process.exit(1);
 }
 
-const { loadGoldenSuite, runGoldenEvaluation, serializeGoldenReport } = await import(
+const { runGoldenEvaluation, serializeGoldenReport } = await import(
   pathToFileURL(serverDist).href
 );
 const ai = await import(pathToFileURL(aiDist).href);

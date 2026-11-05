@@ -11,7 +11,6 @@ import type {
   CreateDemandResponse,
   DemandDetailResponse,
   RegisterExecutorResponse,
-  StageRun,
 } from '@sap-superagent/protocol';
 import {
   FakeExecutor,
@@ -217,7 +216,7 @@ describe('H1 gate e2e (M1 local mode, fake AI)', () => {
     expect(approved.body.approval.state).toBe('approved');
 
     // G1 approval materialises the development task, which the executor completes.
-    const devStage = await waitFor(
+    await waitFor(
       async () => {
         const detail = await getDemand(ctx, created.demand.id);
         const stage = detail.stages.find((candidate) => candidate.stageKey === 'dev_implementation');

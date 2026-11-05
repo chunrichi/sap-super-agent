@@ -1,0 +1,25 @@
+# Teams notification — PLACEHOLDER adapter (docs/008 §3).
+#
+# Logical action : hook.teams.notify
+# Trigger        : stage.waiting_human / approval.requested (human attention)
+# payload mapping:
+#   channel        <- config webhook URL
+#   template       <- per eventType template
+#   demandNo       <- demand.no
+#   deepLink       <- <control-plane>/demands/<demandId> (config base URL)
+#   mention        <- requiredRole owner (config mapping)
+# Idempotency    : eventId (envelope idempotencyKey); notifications may be
+#                  dropped after their TTL, but the delivery attempt stays
+#                  audited in hook.attempted/hook.delivered/hook.dead.
+# Failure        : 429 honours Retry-After; a permanently lost notification is
+#                  acceptable (the in-app notification is authoritative), so
+#                  dead letters here are informational only.
+# Receipt        : optional; most chat targets do not call back.
+hooks:
+  - id: teams
+    target: http
+    url: https://example.webhook.office.com/webhookb2/placeholder
+    events: [stage.waiting_human, approval.requested]
+    secretRef: env:TEAMS_HOOK_SECRET
+    enabled: false
+    retry: { maxAttempts: 3, backoff: exponential, deadLetter: true }

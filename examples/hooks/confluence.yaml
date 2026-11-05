@@ -1,0 +1,25 @@
+# Confluence page upsert — PLACEHOLDER adapter (docs/008 §3).
+#
+# Logical action : hook.confluence.page.upsert
+# Trigger        : stage.done (acceptance/archive stage completed)
+# payload mapping:
+#   space          <- config
+#   parentId       <- config (optional)
+#   title          <- "R-<demandNo> <demand.title>"
+#   bodyRef        <- knowledge_entry artifact contentRef
+#   labels[]       <- ["sap-superagent", "R-<demandNo>"]
+#   demandNo       <- demand.no
+# Idempotency    : upsert by (space, title) is safe to retry; the pageId comes
+#                  back in the 2xx body / receipt and is recorded.
+# Failure        : 5xx/429 backoff; 4xx dead letter; publish-related gates (G5)
+#                  stay in the stage graph, not in this adapter.
+# Receipt        : POST /hooks/confluence/receipt {externalId: "<pageId>", status: updated}
+hooks:
+  - id: confluence
+    target: http
+    url: https://confluence.example.com/rest/api/content
+    events: [stage.done]
+    secretRef: env:CONFLUENCE_HOOK_SECRET
+    enabled: false
+    retry: { maxAttempts: 5, backoff: exponential, deadLetter: true }
+    # reconcileUrl: https://confluence.example.com/rest/api/content?spaceKey=PDO&label=sap-superagent

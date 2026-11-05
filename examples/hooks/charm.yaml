@@ -1,0 +1,27 @@
+# CHARM transport request — PLACEHOLDER adapter (docs/008 §3).
+#
+# Logical action : hook.charm.tr.ensure
+# Trigger        : artifact.approved (development spec confirmed at G3)
+# payload mapping:
+#   targetSystem   <- demand.workspaceBinding.projectKey / config
+#   client         <- config (SAP client)
+#   owner          <- requester.userId
+#   descriptionRef <- code_change artifact contentRef
+#   artifacts[]    <- [{artifactId, version, checksum, contentRef}] from the envelope
+#   demandNo       <- demand.no
+# Idempotency    : CHARM create is NON-idempotent. Query by business key
+#                  (demandNo + targetSystem) before creating; if the lookup is
+#                  ambiguous the adapter must open a human task instead of
+#                  retrying. The TR number comes back via receipt; record it.
+# Failure        : no automatic blind retry of the create call; 5xx may be
+#                  retried only after a successful lookup shows no TR exists.
+# Receipt        : POST /hooks/charm/receipt {externalId: "<TR>", status: created}
+hooks:
+  - id: charm
+    target: http
+    url: https://charm.example.com/api/transport-requests
+    events: [artifact.approved]
+    secretRef: env:CHARM_HOOK_SECRET
+    enabled: false
+    retry: { maxAttempts: 5, backoff: exponential, deadLetter: true }
+    # reconcileUrl: https://charm.example.com/api/transport-requests?externalId=SAP-SUPERAGENT

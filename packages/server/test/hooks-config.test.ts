@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -160,6 +160,20 @@ describe('resolveHooksConfig (docs/008 §6)', () => {
     expect(config.loaded).toBe(true);
     expect(config.hooks.length).toBeGreaterThanOrEqual(5);
     expect(enabledHooks(config)).toEqual([]);
+  });
+
+  it('ships valid placeholder adapter configs under examples/hooks/', () => {
+    const dir = join(process.cwd(), '../..', 'examples', 'hooks');
+    const files = readdirSync(dir).filter((name) => name.endsWith('.yaml'));
+    expect(files.sort()).toEqual(['charm.yaml', 'confluence.yaml', 'jira.yaml', 'teams.yaml']);
+    for (const file of files) {
+      const path = join(dir, file);
+      const config = resolveHooksConfig({ SA_HOOKS_CONFIG: path }, dir);
+      expect(config.loaded, file).toBe(true);
+      expect(config.hooks, file).toHaveLength(1);
+      expect(config.hooks[0]?.enabled, file).toBe(false);
+      expect(enabledHooks(config), file).toEqual([]);
+    }
   });
 });
 

@@ -15,7 +15,7 @@ const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_PORT = 3080;
 const DEFAULT_HEARTBEAT_SWEEP_MS = 1_000;
 const DEFAULT_STAGE_POLL_MS = 200;
-const DEFAULT_VERSION = '0.0.0';
+const DEFAULT_VERSION = '1.0.0';
 const DEFAULT_WS_PING_MS = 20_000;
 
 function positiveInt(value: number | undefined, fallback: number, name: string): number {

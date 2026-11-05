@@ -1,6 +1,6 @@
 {
   "name": "@sap-superagent/core",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Pure domain logic: state machines, scheduling rules, template loader, context pack.",

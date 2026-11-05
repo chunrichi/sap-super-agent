@@ -1,6 +1,6 @@
 {
   "name": "sap-superagent",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Super-agent for SAP delivery: demands in SAP, orchestration in a portable control plane, coding in VSCode with Copilot Chat.",
   "license": "Apache-2.0",
@@ -18,17 +18,22 @@
     "test": "pnpm -r --if-present run test",
     "build": "pnpm -r --if-present run build",
     "e2e": "node scripts/e2e.mjs",
+    "package:vsix": "node scripts/vsix-package.mjs",
+    "vscode:smoke": "node scripts/vscode-smoke.mjs",
     "contract:gen": "pnpm --filter @sap-superagent/protocol run build && node scripts/contract-gen.mjs",
     "contract:check": "pnpm --filter @sap-superagent/protocol run build && node scripts/contract-gen.mjs --check",
     "eval:golden": "node scripts/eval-golden.mjs",
     "sap:check": "node scripts/sap-check.mjs",
     "sap:reconcile": "tsx packages/server/src/sap-reconcile.ts",
-    "hooks:reconcile": "node scripts/hooks-reconcile.mjs"
+    "hooks:reconcile": "node scripts/hooks-reconcile.mjs",
+    "link:check": "node scripts/link-check.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
     "@types/vscode": "^1.90.0",
     "@types/ws": "^8.18.2",
+    "@vscode/vsce": "^4.1.0",
+    "esbuild": "^0.28.2",
     "eslint": "^9.39.5",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",

@@ -128,7 +128,7 @@ describe('health response', () => {
   it('pins the local mode contract', () => {
     const health = healthResponseSchema.parse({
       status: 'ok',
-      version: '0.0.0',
+      version: '1.0.0',
       uptimeMs: 12,
       serverTime: NOW,
       aiProvider: 'fake',

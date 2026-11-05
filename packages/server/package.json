@@ -1,6 +1,6 @@
 {
   "name": "@sap-superagent/server",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Control-plane host: HTTP/WS API, SQLite state, events, scheduler, AI stage runner.",

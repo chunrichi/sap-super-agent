@@ -1,6 +1,6 @@
 {
   "name": "@sap-superagent/sap-adapter",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "SAP ICF JSON client, webhook signature, field mapping, reconcile (H2).",

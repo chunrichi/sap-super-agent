@@ -82,7 +82,7 @@
 - **断线重连**：WS 断线后指数退避重连（1s/2s/4s… 上限 60s，复用 presence 退避策略）并携带 `lastSeq`；游标过期（`resync_required`）时全量拉取 `GET /tasks` + `GET /events?after=`。客户端不用本地时钟判断租约过期，只用服务端 `serverTime`。
 - **preflight**：工作区已被信任（Workspace Trust）、仓库干净或已确认、分支基线正确、`abap` 可执行且版本 ≥2.2.0、`abap doctor` 通过、Node 版本满足 abap-cli 要求、SAP 会话有效、`allowedSystems` 命中当前 SID/client。失败 → **不领取/不开始**，逐条给出下一步动作（例如"确认信任该工作区""升级 abap-cli"），不自动重试写操作；任务留在池中给其他执行器（S3 不新增任务级 `waiting_human` 状态，任务状态机见 [003 §2.3](003-domain-and-protocol.md)）。
 
-### 2.5 失败与安全
+### 2.6 失败与安全
 
 | 场景 | 处理 |
 | --- | --- |

@@ -13,6 +13,8 @@ import {
   hookEnvelopeSchema,
   type EventEnvelope,
   type HookEnvelope,
+  type HookReplayResponse,
+  type ListHooksResponse,
 } from '@sap-superagent/protocol';
 import {
   FakeHookTarget,
@@ -376,5 +378,163 @@ describe('generic Hook outbound delivery (docs/008 §5)', () => {
       return event.data['reason'] === 'demand.cancelled';
     });
     expect(cancelledEvent.data).toMatchObject({ hookId: 'http-example', delivered: false });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §1.4 management API: GET /hooks status, POST /hooks/{id}/replay idempotency.
+// ---------------------------------------------------------------------------
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function listHooks(context: HookTestContext, token?: string): Promise<ListHooksResponse> {
+  const response = await apiRequest<ListHooksResponse>(context.server.url, '/hooks', {
+    token: token ?? context.adminToken,
+  });
+  expect(response.status, JSON.stringify(response.body)).toBe(200);
+  return response.body;
+}
+
+function hookStatus(context: HookTestContext, body: ListHooksResponse): ListHooksResponse['hooks'][number] {
+  const status = body.hooks.find((hook) => hook.id === 'http-example');
+  expect(status).toBeDefined();
+  return status as ListHooksResponse['hooks'][number];
+}
+
+async function replay(
+  context: HookTestContext,
+  hookId: string,
+  eventId: string,
+  idempotencyKey?: string,
+): Promise<{ status: number; body: HookReplayResponse | { error: { code: string } }; headers: Headers }> {
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${context.adminToken}`,
+    'content-type': 'application/json',
+  };
+  if (idempotencyKey !== undefined) headers['idempotency-key'] = idempotencyKey;
+  const response = await fetch(`${context.server.url}/hooks/${hookId}/replay`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ eventId }),
+  });
+  return { status: response.status, body: (await response.json()) as never, headers: response.headers };
+}
+
+describe('generic Hook management API (docs/003 §4.7, docs/008 §6)', () => {
+  it('reports enablement, subscriptions, queue depth, lastError and last attempt (admin only)', async () => {
+    const context = await bootHooks({ events: ['demand.created'] });
+    const forbidden = await apiRequest(context.server.url, '/hooks', { token: context.userToken });
+    expect(forbidden.status).toBe(403);
+
+    await createDemand(context, 'R-4001 Hook 状态');
+    await waitForOutboxStatus(context, 'SENT');
+    await waitForEvent(context, 'hook.delivered');
+    const status = hookStatus(context, await listHooks(context));
+    expect(status).toMatchObject({
+      id: 'http-example',
+      target: 'http',
+      enabled: true,
+      events: ['demand.created'],
+      queue: { pending: 0, sent: 1, dead: 0, cancelled: 0 },
+      lastError: null,
+    });
+    expect(status.lastAttempt).toMatchObject({ attempt: 1, ok: true, error: null });
+
+    const deadContext = await bootHooks({ events: ['demand.created'] });
+    deadContext.target.injectFault({ kind: 'status', status: 400, body: { error: 'bad field' } });
+    await createDemand(deadContext, 'R-4002 Hook 死信状态');
+    await waitForOutboxStatus(deadContext, 'DEAD');
+    await waitForEvent(deadContext, 'hook.dead');
+    const deadStatus = hookStatus(deadContext, await listHooks(deadContext));
+    expect(deadStatus.queue).toEqual({ pending: 0, sent: 0, dead: 1, cancelled: 0 });
+    expect(deadStatus.lastError).toContain('HTTP 400');
+    expect(deadStatus.lastAttempt).toMatchObject({ attempt: 1, ok: false });
+    expect(String(deadStatus.lastAttempt?.error)).toContain('HTTP 400');
+  });
+
+  it('replays a dead delivery by eventId and is idempotent per Idempotency-Key', async () => {
+    const context = await bootHooks({ events: ['demand.created'] });
+    context.target.injectFault({ kind: 'status', status: 400, body: { error: 'bad field' } });
+    await createDemand(context, 'R-4003 Hook 重放');
+    const deadRow = await waitForOutboxStatus(context, 'DEAD');
+    const deadEnvelope = JSON.parse(deadRow.payload) as HookEnvelope;
+    const deliveriesBefore = context.target.deliveries.length;
+    expect(deliveriesBefore).toBe(1);
+
+    const first = await replay(context, 'http-example', deadEnvelope.eventId, 'replay-key-1');
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({
+      hookId: 'http-example',
+      eventId: deadEnvelope.eventId,
+      replayed: true,
+      status: 'queued',
+    });
+    await waitFor(async () => (context.target.orders.size === 1 ? true : undefined), {
+      timeoutMs: 5_000,
+      label: 'replayed delivery',
+      intervalMs: 10,
+    });
+    expect(context.target.deliveries).toHaveLength(deliveriesBefore + 1);
+    expect(context.target.idempotencyKeys.at(-1)).toBe(deadEnvelope.idempotencyKey);
+    await waitForEvent(context, 'hook.delivered');
+    expect((await events(context)).filter((event) => event.type === 'hook.delivered')).toHaveLength(1);
+
+    // Same Idempotency-Key -> served from the idempotency store: no new delivery.
+    const duplicate = await replay(context, 'http-example', deadEnvelope.eventId, 'replay-key-1');
+    expect(duplicate.status).toBe(200);
+    expect(duplicate.headers.get('idempotent-replay')).toBe('true');
+    expect(duplicate.body).toEqual(first.body);
+    await sleep(80);
+    expect(context.target.deliveries).toHaveLength(deliveriesBefore + 1);
+    expect((await events(context)).filter((event) => event.type === 'hook.delivered')).toHaveLength(1);
+
+    // A deliberate replay with a new key re-POSTs the same idempotencyKey; the
+    // external target dedupes it and no second external order is created.
+    const deliberate = await replay(context, 'http-example', deadEnvelope.eventId, 'replay-key-2');
+    expect(deliberate.status).toBe(200);
+    expect(deliberate.body).toMatchObject({ replayed: true, status: 'queued' });
+    await waitFor(async () => (context.target.deliveries.length === deliveriesBefore + 2 ? true : undefined), {
+      timeoutMs: 5_000,
+      label: 'deliberate replay delivery',
+      intervalMs: 10,
+    });
+    expect(context.target.duplicateDeliveries).toBe(1);
+    expect(context.target.orders.size).toBe(1);
+    expect(context.target.idempotencyKeys.at(-1)).toBe(deadEnvelope.idempotencyKey);
+  });
+
+  it('validates replay requests (missing key / unknown hook / unknown event / disabled hook)', async () => {
+    const context = await bootHooks({
+      events: ['demand.created'],
+      hooksYaml: `
+hooks:
+  - id: http-example
+    target: http
+    url: http://127.0.0.1:9099/hooks/example
+    events: [demand.created]
+    secretRef: env:SA_HOOKS_HTTP_SECRET
+    enabled: true
+  - id: disabled-hook
+    target: http
+    url: http://127.0.0.1:9099/disabled
+    events: [demand.created]
+    secretRef: env:SA_HOOKS_HTTP_SECRET
+    enabled: false
+`,
+    });
+    const eventId = '01J8ZQ9W3K5M2V7X4C6B8N0P1Q';
+
+    const missingKey = await replay(context, 'http-example', eventId);
+    expect(missingKey.status).toBe(400);
+    expect((missingKey.body as { error: { code: string } }).error.code).toBe('bad_request');
+
+    expect((await replay(context, 'unknown-hook', eventId, 'k-1')).status).toBe(404);
+    expect((await replay(context, 'http-example', eventId, 'k-2')).status).toBe(404);
+
+    const disabled = await replay(context, 'disabled-hook', eventId, 'k-3');
+    expect(disabled.status).toBe(409);
+    expect((disabled.body as { error: { code: string } }).error.code).toBe('conflict');
   });
 });

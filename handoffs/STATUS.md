@@ -11,7 +11,7 @@
 | H2-B | [H2-sap-icf-mime.md](H2-sap-icf-mime.md)（§1.6 Phase B） | done（已合入 main，PR #7） | h2b-agent（worktree `.sap-superagent-worktrees/h2b`） | feat/h2-phase-b | 5cd1b52（AFF）/ 852afe6（bootstrap 重放）/ c867cfc（类修复）/ a074824（docs+STATUS） | 测试系统（profile=test）：`$ZSA` 已创建（TDEVC 复核）；6/6 表 active（DD02L/DD03L：INT4/TIMESTAMPL/STRG 未降级；`abap pull` 与仓库 AFF 逐字节一致）；3 类 + testclasses active（`inspect --activation` ok）+ ABAP Unit 6/6；ICF `/sap/zsa` 已建、handler=`ZCL_ZSA_HTTP_HANDLER`、无凭据探测 **401**（节点可达）；MIME `/zsa/ui` create+push uploaded=3（本地包无 TR）；`ZSA_OUTBOX_PUSH` active；`abap check syntax --all` ✅；`abap validate:aff` 18/18 ✅；`pnpm sap:check` 离线 5 pass/1 skip + `SA_SAP_CHECK_ONLINE=1` 6 pass ✅；**Lead 独立复核**：`pnpm check` 350 tests ✅、`pnpm e2e` 9/9 ✅、`abap test` 3/3+3/3 ✅、`DD03L` INT4/TIMESTAMPL/STRG ✅、`$ZSA` TDEVC PARENTCL=$TMP/DUVUNIT=LOCAL ✅、`pnpm build` ✅ | 偏差与 blocked 见「H2 Phase B 偏差与遗留」；上游缺陷 issue：<https://github.com/chunrichi/abap-cli/issues/34>；关键结论：`$ZSA` 实测不存在（`abap list` 假阴性）、DDIC 表由一次性 bootstrap 建（create TABL 缺陷）、`COMMENT`→`DECISION_COMMENT`、SICF 节点名 `ZSA`；**Lead 集成验收**：PR #7 merge `08b5cdc`，CI ✅ 45s；合入后 main 树 == H2-B 分支；本地 main 复核 check/e2e/sap:check（离线+在线）/build 全绿，`abap test` 6/6、DD03L 抽检通过 |
 | S3 | [S3-multi-user-dispatch.md](S3-multi-user-dispatch.md) | done（已合入 main，PR #6） | s3-agent（worktree `.sap-superagent-worktrees/s3`） | feat/s3-multi-user | 809390d（代码完结；fa801f5 协议 → ad49081 core → 81f234b WS 过滤 → b6fb513 transfer → 5bf90bc/607b8fc 客户端 → 809390d e2e → 本次 docs/STATUS 收尾提交） | `pnpm check` ✅ **402 tests**（protocol 59 / ai 28 / core 52 / vscode 98 / server 67 / testkit 23 / cli 44 / sap-adapter 31；contract 39 schemas / 5 examples / 19 routes）；`pnpm e2e` ✅ **15/15，3.91s**（<5s）；`pnpm build` ✅ 8/8；多执行器 e2e 覆盖 009 #1/#2/#4/#5/#8/#9/#16 + 转交冒烟（手工复现见「S3 验收复现」） | WS `task.offered` 按执行器资格过滤（连接绑定 executorId，user/admin 不收）、`maxConcurrentPerUser`（默认 2，仅 vscode）、`POST /tasks/{id}/transfer`（迁移 v5 审计、回池 + 事件链、幂等、409）、客户端 WS 实时/退避重连/lastSeq(globalState)/resync 全量拉取、任务箱「等待我回答」接 H1 approvals/notifications、工作区切换立即 release、client preflight；偏差见「S3 偏差与遗留」；未 push、未合入 main、未跑真机 Extension Host；**Lead 集成验收**：PR #6 merge `5c27eb2`，CI ✅ 46s；合入后 main 树 == S3 分支；Lead 独立复核 check 402 tests / e2e 15/15 / build ✅ |
 | S4 | [S4-hooks.md](S4-hooks.md) | done（已合入 main，PR #10） | s4-agent（lead 执行；worktree `.sap-superagent-worktrees/s4`） | feat/s4-hooks | cf395e6（代码完结；merge commit `2b0aecf` 合入 main） | `pnpm check` ✅ **440 tests**（protocol 59 / sap-adapter 31 / ai 28 / core 52 / vscode 98 / server 91 / cli 44 / testkit 37；contract 47 schemas / 7 examples / 22 routes）；`pnpm e2e` ✅ **16/16，4.08s**（<5s，新增通用 Hook 全链路）；`pnpm build` ✅ 8/8；`pnpm hooks:reconcile` ✅（无 state 时说明并退出 0；真实 state 冒烟 4 差异、`--fail-on-diff` 退出 3）；`pnpm install --frozen-lockfile --offline` ✅；**落地：PR #10 → CI ✅ 1m5s → merge commit `2b0aecf` 合入 main，main 树 == 分支树（tree `e5df148`）；main push CI ✅ 66s** | 交付见任务书 §1.1–§1.8；偏差/遗留见「S4 偏差与遗留」；任务书 §2 五条手工冒烟复现见「S4 验收复现」；已推送并合入 main，远端特性分支可删除 |
-| S5 | [S5-sap-hosted-mode.md](S5-sap-hosted-mode.md) | done（**Phase A 已交付，待合入**）；Phase B → blocked（人工输入缺失，见「S5 偏差与遗留」） | lead（Team：server-core / server-tests / testkit-e2e / abap-sap / docs-m3；Lead 契约+集成验收） | feat/s5-sap-hosted | 2811cfa（protocol+contracts）/ e5dfe02（契约 docs）→ 5f2c574（server）→ 464a56c（testkit+e2e）→ 4f27e11（SAP AFF）→ 本次 docs/STATUS 收尾 | `pnpm install --frozen-lockfile --offline` ✅；`pnpm check` ✅ **469 tests**（protocol 59 / sap-adapter 31 / ai 28 / core 52 / vscode 98 / server 108 / cli 44 / testkit 49；contract **59 schemas / 9 examples / 27 routes**）；`pnpm e2e` ✅ **17/17，4.35s**（<5s，新增 `sap-hosted` 全链路）；`pnpm build` ✅ 8/8；`pnpm sap:check` ✅ 离线 5 pass/1 skip（29 files；`validate:aff` 20/20、`check content` 10）；`pnpm contract:check` ✅ | 交付见「S5 偏差与遗留」；任务书 §2 五条冒烟复现见「S5 验收复现」；分支未 push、未合入 main；Phase B 真机 blocked（控制平面可达/HMAC/服务账号/SM36/企业 AI 网关） |
+| S5 | [S5-sap-hosted-mode.md](S5-sap-hosted-mode.md) | done（**Phase A 已合入 main**，PR #13）；**Phase B 部分完成**（SAP 侧对象已激活 + ABAP Unit **15/15**），其余输入 blocked（见「S5 偏差与遗留」「S5 Phase B 进展」） | lead（Team：server-core / server-tests / testkit-e2e / abap-sap / docs-m3；Lead 契约+集成验收） | feat/s5-sap-hosted → 已合入 main | 2811cfa/e5dfe02（契约）→ 5f2c574（server）→ 464a56c（testkit+e2e）→ 4f27e11（SAP AFF）→ 5699915（docs/010/STATUS）→ **merge `1e556f0`（PR #13，CI ✅ 1m9s）**；Phase B 修复 `bd5ff61` | `pnpm install --frozen-lockfile --offline` ✅；`pnpm check` ✅ **469 tests**（protocol 59 / sap-adapter 31 / ai 28 / core 52 / vscode 98 / server 108 / cli 44 / testkit 49；contract **59 schemas / 9 examples / 27 routes**）；`pnpm e2e` ✅ **17/17，4.35s**（<5s，含 `sap-hosted` 全链路）；`pnpm build` ✅ 8/8；`pnpm sap:check` ✅ 离线 5 pass/1 skip（29 files；`validate:aff` 20/20、`check content` 10）；`SA_SAP_CHECK_ONLINE=1 pnpm sap:check` ✅ **6 pass / 0 skip**（含 `abap check syntax --all`）；`pnpm contract:check` ✅；**Phase B**：`abap test ZCL_ZSA_AI_BATCH` ✅ **15/15**、`abap pull --active` 与仓库一致 | Phase A 已合入 main（PR #13，merge `1e556f0`，main 树 == 分支树，远端特性分支已删）；Phase B 仍 blocked 输入：控制平面可达 + HMAC/服务账号、SM36/bgRFC、企业 AI 网关（SAP 侧对象部署与 ABAP Unit 已完成） |
 
 ## H0 偏差与遗留（交接给 H1 / H2 / 用户）
 
@@ -224,7 +224,7 @@
 
 ## S5 偏差与遗留（交接给 Lead / 用户）
 
-1. **Phase A 交付（任务书 §1.1–§1.6 全部落地）**：契约（docs/003 §4.8 + `packages/protocol/src/ai-jobs.ts` 12 schemas + 4 个 `stage.ai_job.*` 持久事件 + contracts 59 schemas / 9 examples / 27 routes）；控制平面（迁移 v7 `sap_ai_jobs`、job 队列/租约/幂等、`SA_SAP_AI_BATCH` 等配置、StageRunner 委派不调本地 provider、启动恢复 + tick sweeper、`completeServerAiStage` 单一完成实现、HMAC job API、admin requeue、`/hooks/sap/status` 追加 `aiJobs`）；SAP 侧（`ZCL_ZSA_AI_BATCH` + 16 ABAP Unit + `ZSA_AI_BATCH_RUN` + `ZSA_CFG` 新键 + 离线 `sap:check`）；测试设施（`FakeAiGateway`/`FakeSapAiBatch` + server 集成 17 + pdo 无 executor 全链路 e2e）；M3 部署文档（docs/010 + README + docs/002/007/009 同步）。
+1. **Phase A 交付（任务书 §1.1–§1.6 全部落地）**：契约（docs/003 §4.8 + `packages/protocol/src/ai-jobs.ts` 12 schemas + 4 个 `stage.ai_job.*` 持久事件 + contracts 59 schemas / 9 examples / 27 routes）；控制平面（迁移 v7 `sap_ai_jobs`、job 队列/租约/幂等、`SA_SAP_AI_BATCH` 等配置、StageRunner 委派不调本地 provider、启动恢复 + tick sweeper、`completeServerAiStage` 单一完成实现、HMAC job API、admin requeue、`/hooks/sap/status` 追加 `aiJobs`）；SAP 侧（`ZCL_ZSA_AI_BATCH` + 15 ABAP Unit（真机 15/15）+ `ZSA_AI_BATCH_RUN` + `ZSA_CFG` 新键 + 离线 `sap:check`）；测试设施（`FakeAiGateway`/`FakeSapAiBatch` + server 集成 17 + pdo 无 executor 全链路 e2e）；M3 部署文档（docs/010 + README + docs/002/007/009 同步）。
 2. **契约与显式决策（均在 docs/003 §4.8 允许范围内，已与 docs/010 对齐）**：
    - 新增环境变量 `SA_SAP_AI_JOB_TIMEOUT_MS`（默认 120000）与 `SA_SAP_AI_JOB_MAX_LEASE_EXPIRIES`（默认 2）：任务书要求 payload 带超时/多次过期判失败，但 §1.2 未列出对应 env，独立成项写入 003 §4.8.1 与 010。
    - `X-SA-Timestamp` 容忍窗复用既有 `SA_SAP_HOOK_TOLERANCE_MS`（SAP 集成 env），不引入第二套时间窗配置。
@@ -235,21 +235,17 @@
    - `ServerOptions.sapAiBatch` 仅用于测试/运维注入（生产通过 env）；传对象未写 `enabled` 视为启用。
    - SAP 模式启动恢复按 run 逐个判断（委派阶段保留 job/幂等补建，非委派阶段沿用 H0–S4 legacy reset），不调用全局 `recoverRunningServerAiStages`。
 3. **测试覆盖**：server 集成 17（默认关闭/生命周期/HMAC/幂等/非法输出重试/租约过期与 maxAge/重启恢复/admin requeue/status/取消/数据边界，覆盖 docs/009 #17/#18）；testkit 假件单测 12（HMAC/OpenAI 兼容/故障注入）；e2e 1 条 pdo 六阶段「无任何 executor 在线 + 本地 provider 0 调用 + SAP 审批推进」全链路；既有 440 tests 全部不回归（总 469）。
-4. **Phase B blocked（人工输入缺失，未伪造真机证据；同 H2-B 先例）**：
-   - SAP 侧 `abap create/pull/push`、`abap check syntax`、`abap activate`、`abap test`（ABAP Unit 真机）；
-   - 控制平面可从测试系统访问（内网地址/隧道）+ `SA_SAP_HOOK_SECRET` 注入；
-   - 控制平面→SAP 服务账号（ICF 回写/对账）；
-   - SM36/bgRFC 调度窗口与权限；
-   - 企业 AI 网关 URL/model/key + SAP 安全存储注入方式 + 出口策略/TLS(STRUST)/ICM 网络超时；
-   - 测试系统（S/4HANA，profile `test`）可达 + `abap doctor` 通过。
-   Phase B 输入清单同步写入 docs/010 §9.3；Phase A 交付不以此为阻塞。
+4. **Phase B（真机）部分完成，剩余 blocked（未伪造证据；同 H2-B 先例）**：
+   - ✅ **已完成（2026-11-05）**：测试系统可达（`abap doctor` + `abap profile test test`：TLS/auth/ADT/ICF 全 ok，只连测试系统）；`$ZSA` 本地包存在；`ZCL_ZSA_AI_BATCH` + testclasses、`ZSA_AI_BATCH_RUN` 已 `abap create/push` 并激活（无 TR）；`abap check syntax` 通过；`abap test ZCL_ZSA_AI_BATCH` **15/15**；`SA_SAP_CHECK_ONLINE=1 pnpm sap:check` **6 pass/0 skip**；`abap pull --active` 回拉与仓库源码一致（仅 CRLF/末尾换行差异）。首次真机单测暴露 2 个**测试自身**断言错误（ABAP `find()` 未命中返回 `-1`，断言误写 0）→ 修复 `bd5ff61` 后 15/15。
+   - **仍 blocked（人工输入）**：控制平面可从测试系统访问（内网地址/隧道）+ `SA_SAP_HOOK_SECRET` 注入；控制平面→SAP 服务账号（ICF 回写/对账）；SM36/bgRFC 调度窗口与权限；企业 AI 网关 URL/model/key + SAP 安全存储注入方式 + 出口策略/TLS(STRUST)/ICM 网络超时；`ZSA_CFG` 业务键写入（依赖上述值）。
+   Phase B 输入清单同步写入 docs/010 §9.3；B3–B10 与端到端 M3 证据需输入齐备后执行。完整命令/输出见「S5 Phase B 进展」。
 5. **已知风险 / 遗留**：
-   - ABAP 源码只经离线 `abap validate:aff` + `abap check content`，**未做真机语法检查/ABAP Unit**；Phase B 首次 gate 需重点验证 `cl_http_client`、BAL_* 函数、`/ui2/cl_json` snake_case、`cl_system_uuid`、非 ASCII prompt 的 HMAC/HTTP 编码。
-   - ABAP 未在代码内设置网关 HTTP 超时（沿用 `ZCL_ZSA_EVENT_PUSH` 模式，避免依赖未验证 API）；Phase B 需在 ICM/SM59 配网络超时（建议 ≤ 控制平面租约 10min）。
+   - ABAP 真机语法/激活/ABAP Unit 已通过首轮（15/15，覆盖 `cl_abap_hmac` RFC4231 向量、`/ui2/cl_json` snake_case 映射、result 报文与错误分类）；尚未覆盖 runtime 路径：`cl_http_client` 真实网络调用（连接/超时/错误响应）、BAL `ZSA/AI_BATCH` 日志（SLG0 未配置时静默跳过）、真实网关响应体——需端到端 Phase B 验证。
+   - ABAP 未在代码内设置网关 HTTP 超时（沿用 `ZCL_ZSA_EVENT_PUSH` 模式，避免依赖未验证 API）；需在 ICM/SM59 配网络超时（建议 ≤ 控制平面租约 10min）。
    - SAP 批处理无并行线程，心跳为「调用前/按需」续租，单次网关调用中途不续租；由有效超时 + 控制平面 maxAge/租约 sweeper 兜底。
    - 关闭 `SA_SAP_AI_BATCH` 后残留 queued/claimed job 行不再被 sweep（docs/010 §8.6 写明运维边界：关闭前先确认无在途 job）。
    - M3 控制平面为单节点（SQLite + 本地工件目录）无 HA；批处理领取延迟受 SM36 周期约束（建议 1 分钟）。
-6. **提交状态**：分支 `feat/s5-sap-hosted`（worktree `.sap-superagent-worktrees/s5`）未 push、未合入 main；未提交密钥/地址/`.env`/构建产物；`sap/` 无真实地址（仅既有 GitHub issue 链接）；docs/003 契约与 `contracts/` 快照同步提交。
+6. **提交状态**：Phase A 分支 `feat/s5-sap-hosted` 已通过 **PR #13** 合入 main（merge `1e556f0`，CI ✅ 1m9s；main 树 == 分支树；远端特性分支已删除）；Phase B 收尾（`bd5ff61` 断言修复 + 文档/看板）在 `fix/s5-abap-unit` 分支走 PR。未提交密钥/地址/`.env`/构建产物；`sap/` 无真实地址（仅既有 GitHub issue 链接）；docs/003 契约与 `contracts/` 快照同步提交。
 
 ### S5 验收复现（任务书 §2 手工冒烟，用集成/e2e 复现并记录命令）
 
@@ -260,3 +256,25 @@
 | 3 | SAP 内审批推进：SAP Web 审批（fake webhook）→ 阶段推进；无 client 在线 | 同上 e2e（经 `POST /hooks/sap` `artifact.approved` 批准 confirm:intake/G1/G2/G4/G5，dev 阶段 FakeExecutor 注销后无 executor） | ✅ e2e 1 passed：6 工件 approved、6 门禁 approved、Demand `done`；`presence != offline` 的 executor 数在起点/注销后/结束三次均为 0 |
 | 4 | 测试文档与幂等/失败：dev 完成后开发者离线 → SAP batch 生成 test_doc；注入网关超时/非法输出 → 重试到上限转 waiting_human、无半成品；重复 claim/result 幂等 | `... -t "accepts a valid result once"` / `-t "retries non-JSON"` / `-t "SAP-reported failed"`；e2e（test_doc 阶段） | ✅ 幂等用例 1 passed（重复 result `duplicate:true`，completed 事件/attempt/artifact 版本均 1）；失败用例各 1 passed（invalid_output / sap_failed → attempt+1 重试；到 maxAttempts → `waiting_human`，无 artifact 行/`artifact.created`）；e2e 中 test_doc 由 SAP batch 生成并审批 |
 | 5 | M3 文档可照做：按 docs/010 在测试环境完成 CP 部署 + SAP 配置，跑通 Phase B checklist | `docs/010-m3-deployment.md`（含 Phase A checklist A1–A11、Phase B checklist B1–B10、§9.3 blocked 输入清单）；Phase B 真机输入缺失 → **blocked，未执行/未伪造** | ✅ docs/010 已交付并被 README/docs/007 链入；Phase A 离线项全部可复现（见 #1–#4 与本行）；Phase B 至今 blocked（输入清单见「S5 偏差与遗留」§4） |
+
+## S5 Phase B 进展（2026-11-05，真机部分完成）
+
+> 只连测试系统（profile `test`，S/4HANA `SAP_ABA 75H`）；未连生产、未自动激活生产、未提交密钥/地址/TR。测试系统可达、`abap doctor` 与 `abap profile test test` 全 ok 后执行 SAP 侧可独立完成部分；**控制平面可达/HMAC/服务账号、SM36 窗口、企业 AI 网关仍缺失 → B3–B10 未执行**。
+
+| 步骤 | 命令 | 实际输出 |
+| --- | --- | --- |
+| 环境诊断（只读） | `abap doctor --json`；`abap profile test test --json` | doctor：node/tls/install/config/deps/session 全 ok；profile test：TLS ok、auth ok、ADT ok、ICF ok、DDLS source supported |
+| 包存在性（只读） | `abap pull '$ZSA' --type DEVC --json` | success：`$ZSA` DEVC written（H2-B 创建的本地包，无 TR） |
+| 对象存在性（只读） | `abap pull ZCL_ZSA_AI_BATCH --type CLAS`；`abap pull ZSA_AI_BATCH_RUN --type PROG` | 均 `OBJECT_NOT_FOUND`（尚未部署）→ 部署 |
+| 创建类/程序 | `abap create CLAS ZCL_ZSA_AI_BATCH --package '$ZSA' --no-pull --yes`；`abap create PROG ZSA_AI_BATCH_RUN --package '$ZSA' --no-pull --yes` | 均 success（`activated:true`、`transport:""`，本地包无 TR） |
+| 推送 + 激活 | `abap push sap/src/zcl_zsa_ai_batch.clas.abap sap/src/zcl_zsa_ai_batch.clas.testclasses.abap --atomic --yes`；`abap push sap/src/zsa_ai_batch_run.prog.abap --yes` | class/testclasses：`activated` stage=activate，failed 0；program：`activated`，failed 0 |
+| 语法检查 | `abap check syntax sap/src/zcl_zsa_ai_batch.clas.abap sap/src/zcl_zsa_ai_batch.clas.testclasses.abap sap/src/zsa_ai_batch_run.prog.abap --json` | `failure:false`（ADT syntax check 通过） |
+| ABAP Unit（首次） | `abap test ZCL_ZSA_AI_BATCH --json` | **13/15 passed，2 failed**（`GATEWAY_REQUEST_MAPPING` / `RESULT_FAILED_MAPPING`：断言期望 `find()`=0，实际 `-1`）→ 测试自身断言 bug |
+| 修复 | `sap/src/zcl_zsa_ai_batch.clas.testclasses.abap` 两处断言改为 `exp = -1` 并注释（commit `bd5ff61`）；重新 `abap push` testclasses | push：`activated`，failed 0 |
+| ABAP Unit（复测） | `abap test ZCL_ZSA_AI_BATCH --json` | **15 methods / 15 passed / 0 failed**（覆盖 payload/claim/网关 request/response/result、HMAC RFC4231 向量、X-SA 头、409/4xx/5xx/超时分类、租约续期、有效超时、批次上限、result 交付键幂等） |
+| 回拉比对 | `abap pull ZCL_ZSA_AI_BATCH --type CLAS --include-tests --dir /tmp/phaseb-pull --overwrite`；`abap pull ZSA_AI_BATCH_RUN --type PROG --dir /tmp/phaseb-pull --overwrite`；`diff --strip-trailing-cr` | 类源码与仓库**完全一致**（仅 SAP 侧 CRLF）；testclasses/program 仅差文件末尾换行 |
+| 在线离线门禁 | `SA_SAP_CHECK_ONLINE=1 pnpm sap:check` | **6 pass / 0 skip / 0 failed**（AFF 20/20、check content 10、`abap check syntax --all` passed） |
+
+**仍 blocked（人工输入，未伪造）**：`ZSA_CFG` 业务键（`AI_GATEWAY_URL`/`AI_GATEWAY_MODEL`/`AI_TIMEOUT_MS`/`AI_KEY_REF` 及 HMAC/SM36 引用）写入；控制平面可达 + `SA_SAP_HOOK_SECRET` 注入；控制平面→SAP 服务账号；SM36/bgRFC 调度窗口；企业 AI 网关 URL/model/key + 安全存储注入 + 出口策略/TLS。就绪后可继续 docs/010 §9.2 的 B3–B10（含端到端 M3 证据）。
+
+**真机发现（已修复）**：ABAP 内置 `find()` 未命中返回 `-1`（原单测断言误写 0，仅在真机执行才暴露）；说明 Phase A 的离线 `abap check content` 不能替代 ABAP Unit，本次已补齐真机 gate。其余真机结论：`cl_abap_hmac`、`/ui2/cl_json=>deserialize(pretty_mode-none)`、`cl_http_client`/BAL 函数调用签名在 S/4HANA `SAP_ABA 75H` 上均可编译/激活；真实网络调用与 BAL 日志运行时行为待端到端 Phase B。

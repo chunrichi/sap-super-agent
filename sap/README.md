@@ -8,7 +8,7 @@
 > **状态（2026-11-05，Phase B 真机落地）**：测试系统上已创建并激活 6 张 DDIC 表、3 个类（含 ABAP Unit）、ICF 节点 `/sap/zsa`、MIME `/zsa/ui` 三个静态资源、后台 job 程序 `ZSA_OUTBOX_PUSH`；`abap validate:aff` 18/18、`pnpm sap:check` 离线/在线（`SA_SAP_CHECK_ONLINE=1`）全绿、ABAP Unit 6/6。
 > 端到端两条验收（SAP→控制平面 5 分钟入单、审批 1 分钟回写）与 ICF `/api/health` 200 仍需人工输入：控制平面可被测试系统访问（M2/内网隧道）、HMAC secret 注入方式、Basis SSO/服务账号。详见下文「验收结果与 blocked 项」。
 >
-> **状态（2026-11-05，S5 Phase A 离线）**：新增 S5/M3 批处理 AI 执行器对象 `ZCL_ZSA_AI_BATCH`（+ABAP Unit 源文件）与 `ZSA_AI_BATCH_RUN` / AFF 元数据；`pnpm sap:check` 离线绿（必需文件 29 个、`abap validate:aff` 20/20、`abap check content` 10 个 ABAP 文件）。**未连 SAP**：真机 `create/push/check syntax/activate/abap test`、`ZSA_CFG` 写入与 SM36 调度均属 Phase B（blocked，人工输入）。
+> **状态（2026-11-05，S5 Phase B 部分落地）**：新增 S5/M3 批处理 AI 执行器对象 `ZCL_ZSA_AI_BATCH`（+ABAP Unit）与 `ZSA_AI_BATCH_RUN` 已在测试系统 `$ZSA`（本地包，无 TR）**创建并激活**；`pnpm sap:check` 离线绿（必需文件 29 个、`abap validate:aff` 20/20、`abap check content` 10 个 ABAP 文件）；真机 `abap check syntax` 通过、`abap test ZCL_ZSA_AI_BATCH` **15/15**、`abap pull --active` 回拉与仓库源码一致（仅 SAP 侧 CRLF / 文件末尾换行差异）。**仍 blocked（人工输入）**：`ZSA_CFG` 业务键写入（`AI_GATEWAY_URL` 等）、SM36/bgRFC 调度窗口、控制平面可达 + HMAC/服务账号、企业 AI 网关 URL/model/key 与出口策略、端到端 M3 证据。
 
 ## 目录
 
@@ -273,12 +273,12 @@ checklist、ledger、工件与门禁全部留在控制平面。SAP 不拼 prompt
   已知向量与 `X-SA-*` 头构建、control plane 409/401/5xx 分类、网关 4xx/429/5xx/超时分类、
   租约续期时间点、有效超时（`timeoutMs` 与 `AI_TIMEOUT_MS` 取小）、批次上限、result 交付键幂等。
 
-运行（前两类为 2026-11-05 真机实测 3/3；`ZCL_ZSA_AI_BATCH` 为 S5 Phase A 源文件，真机执行属 Phase B blocked）：
+运行（全部为 2026-11-05 真机实测）：
 
 ```sh
 abap test ZCL_ZSA_EVENT_PUSH --json     # 3 methods / 3 passed（H2-B 实测）
 abap test ZCL_ZSA_HTTP_HANDLER --json   # 3 methods / 3 passed（H2-B 实测）
-abap test ZCL_ZSA_AI_BATCH --json       # S5 Phase B：15 methods（待真机）
+abap test ZCL_ZSA_AI_BATCH --json       # 15 methods / 15 passed（S5 Phase B 实测）
 ```
 
 ## 验收结果与 blocked 项（Phase B）
@@ -302,11 +302,12 @@ abap test ZCL_ZSA_AI_BATCH --json       # S5 Phase B：15 methods（待真机）
 7. **SM36 调度 job**：`ZSA_OUTBOX_PUSH` 程序已激活，作业定义需人工在测试系统 SM36（或 bgRFC）创建。
    **blocked（人工）**。
 
-S5/M3 新增（Phase A 只交付离线源文件；以下全部 **blocked**，需人工输入后才做 Phase B）：
+S5/M3 新增（前两项已于 2026-11-05 真机完成；其余仍 **blocked**，需人工输入）：
 
-8. **SAP 侧对象部署**：`ZCL_ZSA_AI_BATCH` + testclasses、`ZSA_AI_BATCH_RUN` 的
-   `abap create/push/check syntax/activate/abap test`——本分支未连 SAP，只做了离线
-   `pnpm sap:check`（AFF 20/20、`abap check content` 10 文件）。**blocked（需测试系统 + Phase B 窗口）**。
+8. ✅ **SAP 侧对象部署（真机完成）**：`ZCL_ZSA_AI_BATCH` + testclasses、`ZSA_AI_BATCH_RUN` 已
+   `abap create/push` 并激活（本地包 `$ZSA`，无 TR）；`abap check syntax` 通过、`abap test` **15/15**、
+   `abap pull --active` 回拉与仓库源码一致。首次真机单测暴露 2 个**测试自身**断言错误
+   （`find()` 未命中返回 `-1`，原断言写 0），修复后 15/15（main `bd5ff61`）。
 9. **控制平面可达 + HMAC secret 注入**：SAP job API 复用 H2-B 的控制平面可达与 `SA_SAP_HOOK_SECRET`
    输入。**blocked（人工，同 H2-B）**。
 10. **企业 AI 网关**：`AI_GATEWAY_URL` / `AI_GATEWAY_MODEL` / key 与出口策略、SAP 安全存储注入方式
@@ -338,9 +339,12 @@ S5/M3 新增（Phase A 只交付离线源文件；以下全部 **blocked**，需
   `GATEWAY_TRANSPORT`（`retryable:true`）回传。
 - **S5 BAL 日志对象**：应用日志对象 `ZSA` / 子对象 `AI_BATCH` 需 SLG0 配置；未配置时记录调用被
   静默跳过（job 不失败），SM37 仍能看到程序 `WRITE` 的汇总行。
-- **S5 真机语法/单测未跑**：`ZCL_ZSA_AI_BATCH` 的 `cl_http_client`、`BAL_*` 函数与 `/ui2/cl_json`
-  snake_case 反序列化只经过离线 `abap check content`（结构级，不做 API/语法检查），
-  Phase B 首次 `abap check syntax` / `abap test` 是必须的 gate。
+- **S5 真机验证（2026-11-05 已完成首轮）**：`abap check syntax`（类/测试类/程序）通过；
+  `abap test ZCL_ZSA_AI_BATCH` **15/15**（覆盖 `cl_abap_hmac` RFC4231 向量、`/ui2/cl_json`
+  snake_case 网关响应映射、claim/next/result 报文、409/4xx/5xx/超时分类、租约与有效超时）；
+  `abap pull --active` 回拉与仓库源码一致；`cl_http_client` 与 `BAL_*` 的**调用签名**已随激活验证。
+  仍未覆盖的只有 runtime 路径：真实网络调用（连接/超时/错误响应）、BAL `ZSA/AI_BATCH` 日志
+  （SLG0 未配置时静默跳过）、真实网关响应体——随端到端 Phase B（需控制平面与网关输入）验证。
 
 ## 本地离线校验
 

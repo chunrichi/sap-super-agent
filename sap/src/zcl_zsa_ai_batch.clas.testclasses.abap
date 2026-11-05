@@ -81,7 +81,8 @@ CLASS ltc_zsa_ai_batch IMPLEMENTATION.
             `{"role":"user","content":"Say \"hello\" now."}]*`
       msg = `system message first, then the user prompt, both JSON escaped` ).
     DATA(lv_max_pos) = find( val = lv_body sub = `max_tokens` ).
-    cl_abap_unit_assert=>assert_equals( act = lv_max_pos exp = 0
+    " ABAP `find` returns -1 (not 0) when the substring is absent.
+    cl_abap_unit_assert=>assert_equals( act = lv_max_pos exp = -1
                                         msg = `max_tokens omitted when not requested` ).
 
     DATA(lv_body_max) = zcl_zsa_ai_batch=>build_gateway_request(
@@ -148,7 +149,8 @@ CLASS ltc_zsa_ai_batch IMPLEMENTATION.
     cl_abap_unit_assert=>assert_char_cp( act = lv_body exp = `*"retryable":true*` ).
     cl_abap_unit_assert=>assert_char_cp( act = lv_body exp = `*"durationMs":2000*` ).
     DATA(lv_prompt_pos) = find( val = lv_body sub = `systemPrompt` ).
-    cl_abap_unit_assert=>assert_equals( act = lv_prompt_pos exp = 0
+    " ABAP `find` returns -1 (not 0) when the substring is absent.
+    cl_abap_unit_assert=>assert_equals( act = lv_prompt_pos exp = -1
                                         msg = `failed result never carries prompt text` ).
   ENDMETHOD.
 

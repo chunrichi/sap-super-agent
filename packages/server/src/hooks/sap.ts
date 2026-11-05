@@ -7,12 +7,14 @@ import {
   type SapDemandRecord,
 } from '@sap-superagent/sap-adapter';
 import { canTransitionDemand, canTransitionStageRun, canTransitionTask } from '@sap-superagent/core';
+import { findPendingApprovalForArtifact, getApproval, listApprovalsForDemand } from '../db/approvals.js';
+import { getArtifact } from '../db/artifacts.js';
 import { getActiveAssignmentForTask, updateAssignment } from '../db/assignments.js';
-import { updateArtifactState } from '../db/artifacts.js';
 import { getDemand, updateDemand } from '../db/demands.js';
 import { listStageRunsForDemand, updateStageRun } from '../db/stages.js';
 import { listTasksForDemand, updateTask } from '../db/tasks.js';
 import { writeTransaction } from '../db/transaction.js';
+import { decideApprovalApprove, decideApprovalReject } from '../stage-engine.js';
 import { badRequest, notFound, unauthorized } from '../errors.js';
 import { requireAdmin } from '../http/auth.js';
 import { nowIso } from '../http/route-utils.js';
@@ -20,14 +22,11 @@ import { parseInput, sendValidated } from '../http/validate.js';
 import type { ServerContext } from '../types.js';
 import type { SapIntegrationConfig } from './sap-config.js';
 import {
-  advanceAfterStage,
   countSapOutbox,
   createSapDemand,
   findStageArtifact,
   getSapDelivery,
   insertSapDelivery,
-  listApprovalsForDemand,
-  reopenStageAfterRejection,
   upsertSapSyncVersion,
 } from './sap-store.js';
 
@@ -323,123 +322,56 @@ function applySapEvent(
         const approved = event.type === 'artifact.approved';
         const demand = getDemand(tx.db, event.demandId);
         if (demand === null) throw notFound(`demand ${event.demandId} not found`);
+
+        // --- H1 owns the gate state machine (docs/003 §2.2/§2.5) ---
+        // A SAP decision resolves the pending control-plane Approval: approve
+        // ends the stage and advances the template, reject starts a new attempt
+        // with a fresh artifact version. We only locate the approval; a decision
+        // for an already resolved/expired gate is an idempotent no-op so a
+        // repeated SAP delivery cannot double-advance the workflow (009 #11).
         const stageRuns = listStageRunsForDemand(tx.db, demand.id);
         const stageRun =
           event.stageKey === undefined
             ? stageRuns.find((run) => run.status === 'waiting_human')
             : stageRuns.find((run) => run.stageKey === event.stageKey);
-        const stageKey = event.stageKey ?? stageRun?.stageKey ?? null;
-        const artifact =
-          stageKey === null ? null : findStageArtifact(tx.db, demand.id, stageKey, event.artifactId);
-
-        if (artifact !== null) {
-          updateArtifactState(tx.db, artifact.artifact.id, approved ? 'approved' : 'rejected', tx.now);
-          tx.append({
-            type: approved ? 'artifact.approved' : 'artifact.rejected',
-            subject: { type: 'artifact', id: artifact.artifact.id },
-            data: {
-              artifactId: artifact.artifact.id,
-              demandId: demand.id,
-              stageKey: artifact.artifact.stageKey,
-              version: artifact.artifact.currentVersion,
-              gateKey: event.gateKey ?? null,
-              decidedBy: event.decidedBy ?? null,
-              comment: event.comment ?? null,
-              decidedAt: event.decidedAt ?? tx.now,
-              source: 'sap',
-            },
-            demandId: demand.id,
-          });
+        const referencedArtifact =
+          event.artifactId === undefined
+            ? (stageRun === undefined
+                ? null
+                : findStageArtifact(tx.db, demand.id, stageRun.stageKey)?.artifact ?? null)
+            : getArtifact(tx.db, event.artifactId);
+        // H1 binds every pending gate to an immutable artifact version; resolve
+        // by that binding first (SAP sends its own approval id, not ours).
+        const approval =
+          (referencedArtifact === null
+            ? null
+            : findPendingApprovalForArtifact(
+                tx.db,
+                referencedArtifact.id,
+                referencedArtifact.currentVersion,
+              )) ??
+          (stageRun === undefined
+            ? null
+            : (listApprovalsForDemand(tx.db, demand.id).find(
+                (candidate) => candidate.stageRunId === stageRun.id && candidate.state === 'pending',
+              ) ?? null)) ??
+          (event.approvalId === undefined ? null : getApproval(tx.db, event.approvalId));
+        if (approval === null || approval.state !== 'pending') {
+          return record(event.type, 'no_pending_approval', demand.id);
         }
-
-        if (event.approvalId !== undefined) {
-          // Approval rows are owned by H1's gate runtime; when one exists we
-          // resolve it, otherwise the decision is only recorded in the artifact
-          // event above (Phase A without H1).
-          const approval = listApprovalsForDemand(tx.db, demand.id).find(
-            (candidate) => candidate.id === event.approvalId && candidate.state === 'pending',
-          );
-          if (approval !== undefined) {
-            const decision = approved ? 'approve' : 'reject';
-            tx.db
-              .prepare(
-                `UPDATE approvals SET state = ?, decision = ?, decided_by = ?, decided_at = ?,
-                   comment = ?, updated_at = ? WHERE id = ?`,
-              )
-              .run(
-                approved ? 'approved' : 'rejected',
-                decision,
-                event.decidedBy ?? null,
-                event.decidedAt ?? tx.now,
-                event.comment ?? null,
-                tx.now,
-                approval.id,
-              );
-            tx.append({
-              type: 'approval.decided',
-              subject: { type: 'approval', id: approval.id },
-              data: {
-                approvalId: approval.id,
-                demandId: demand.id,
-                gateKey: approval.gateKey,
-                decision,
-                decidedBy: event.decidedBy ?? null,
-                comment: event.comment ?? null,
-                source: 'sap',
-              },
-              demandId: demand.id,
-            });
-          }
-        }
-
-        if (stageRun === undefined) {
-          return record(
-            event.type,
-            artifact === null ? 'no_stage_match' : 'artifact_state_updated',
-            demand.id,
-          );
-        }
-
+        const decidedBy = event.decidedBy ?? 'sap';
+        const comment = event.comment ?? null;
         if (approved) {
-          if (stageRun.status === 'waiting_human') {
-            updateStageRun(tx.db, { ...stageRun, status: 'done', finishedAt: tx.now, updatedAt: tx.now });
-            tx.append({
-              type: 'stage.done',
-              subject: { type: 'stage_run', id: stageRun.id },
-              data: {
-                stageRunId: stageRun.id,
-                demandId: demand.id,
-                stageKey: stageRun.stageKey,
-                attempt: stageRun.attempt,
-                gateApproved: true,
-                decidedBy: event.decidedBy ?? null,
-              },
-              demandId: demand.id,
-            });
-            advanceAfterStage(tx, ctx, demand.templateId, demand.id, stageRun.stageKey, {
-              force: true,
-            });
-            return record(event.type, 'stage_advanced', demand.id);
-          }
-          return record(event.type, artifact === null ? 'no_stage_match' : 'artifact_state_updated', demand.id);
+          decideApprovalApprove(tx, ctx, approval, decidedBy, comment);
+        } else {
+          decideApprovalReject(tx, ctx, approval, decidedBy, comment);
         }
-
-        // Rejection re-opens the stage on a new attempt (docs/003 §2.2/§2.5):
-        // H1 will replace this with the full gate state machine.
-        if (stageRun.status === 'done' || stageRun.status === 'waiting_human') {
-          reopenStageAfterRejection(tx, stageRun, 'gate_rejected_in_sap');
-          if (demand.status === 'review' && canTransitionDemand(demand.status, 'in_progress')) {
-            updateDemand(tx.db, { ...demand, status: 'in_progress', updatedAt: tx.now });
-            tx.append({
-              type: 'demand.updated',
-              subject: { type: 'demand', id: demand.id },
-              data: { demandId: demand.id, status: 'in_progress', reason: 'gate_rejected_in_sap' },
-              demandId: demand.id,
-            });
-          }
-          return record(event.type, 'stage_reopened', demand.id);
+        // Keep the SAP optimistic-concurrency cursor in sync when the push
+        // event carries the SAP VERSION (docs/004 §2.2).
+        if (event.sapVersion !== undefined) {
+          upsertSapSyncVersion(tx.db, demand.id, event.sapVersion, tx.now);
         }
-        return record(event.type, artifact === null ? 'no_stage_match' : 'artifact_state_updated', demand.id);
+        return record(event.type, approved ? 'stage_advanced' : 'stage_reopened', demand.id);
       }
 
       case 'hook.receipt': {

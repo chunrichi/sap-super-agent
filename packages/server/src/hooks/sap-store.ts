@@ -1,28 +1,19 @@
 import type { DatabaseSync } from 'node:sqlite';
 import {
   newUlid,
-  type Approval,
   type Artifact,
   type ArtifactVersion,
   type Demand,
   type StageRun,
-  type StageTemplateFile,
 } from '@sap-superagent/protocol';
-import {
-  canTransitionDemand,
-  collectInputRefs,
-  inputArtifactsReady,
-  type ArtifactAvailability,
-} from '@sap-superagent/core';
 import {
   getArtifact,
   getArtifactVersion,
-  latestArtifactRefsByKind,
   listArtifactVersionsForDemand,
   listArtifactsForDemand,
 } from '../db/artifacts.js';
-import { getDemand, insertDemand, updateDemand } from '../db/demands.js';
-import { insertStageRun, listStageRunsForDemand, updateStageRun } from '../db/stages.js';
+import { getDemand, insertDemand } from '../db/demands.js';
+import { insertStageRun, listStageRunsForDemand } from '../db/stages.js';
 import type { TransactionContext } from '../db/transaction.js';
 import { asNullableString, asNumber, asString, decodeJson, encodeJson } from '../db/rows.js';
 import type { ServerContext } from '../types.js';
@@ -104,49 +95,6 @@ export function upsertSapSyncVersion(
     `INSERT INTO sap_sync_state (demand_id, sap_version, updated_at) VALUES (?, ?, ?)
      ON CONFLICT(demand_id) DO UPDATE SET sap_version = excluded.sap_version, updated_at = excluded.updated_at`,
   ).run(demandId, sapVersion, at);
-}
-
-// -- approvals (raw SQL: approvals are H2-read-only until H1 ships the API) ---
-
-interface ApprovalRow {
-  id: string;
-  demand_id: string;
-  stage_run_id: string;
-  gate_key: string;
-  state: string;
-  required_role: string;
-  decision: string | null;
-  decided_by: string | null;
-  decided_at: string | null;
-  comment: string | null;
-  expires_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-function rowToApproval(row: ApprovalRow): Approval {
-  return {
-    id: asString(row.id),
-    demandId: asString(row.demand_id),
-    stageRunId: asString(row.stage_run_id),
-    gateKey: asString(row.gate_key),
-    state: asString(row.state) as Approval['state'],
-    requiredRole: asString(row.required_role) as Approval['requiredRole'],
-    decision: asNullableString(row.decision) as Approval['decision'],
-    decidedBy: asNullableString(row.decided_by),
-    decidedAt: asNullableString(row.decided_at),
-    comment: asNullableString(row.comment),
-    expiresAt: asNullableString(row.expires_at),
-    createdAt: asString(row.created_at),
-    updatedAt: asString(row.updated_at),
-  };
-}
-
-export function listApprovalsForDemand(db: DatabaseSync, demandId: string): Approval[] {
-  const rows = db
-    .prepare('SELECT * FROM approvals WHERE demand_id = ? ORDER BY created_at ASC')
-    .all(demandId) as unknown as ApprovalRow[];
-  return rows.map(rowToApproval);
 }
 
 // -- demand creation from a SAP webhook (SAP is the record system, docs/004 §1) --
@@ -248,102 +196,6 @@ export function createSapDemand(
     });
   }
   return { demand, stages, created: true };
-}
-
-// -- stage advancement after a gate decision (H2-local until H1 lands gates) --
-
-/**
- * Advance the template after a stage finished. Mirrors the H0 stage-runner
- * logic so the SAP gate path can advance without H1's registry; H1 owns the
- * final gate semantics and will replace the duplicated fragment on merge.
- */
-export function advanceAfterStage(
-  tx: TransactionContext,
-  ctx: ServerContext,
-  templateId: string,
-  demandId: string,
-  doneStageKey: string,
-  options: { force?: boolean } = {},
-): void {
-  const template: StageTemplateFile | undefined = ctx.templates.get(templateId);
-  if (template === undefined) return;
-  const index = template.stages.findIndex((stage) => stage.key === doneStageKey);
-  const next = index < 0 ? undefined : template.stages[index + 1];
-  const demand = getDemand(tx.db, demandId);
-  if (demand === null) return;
-  if (next === undefined) {
-    if (!canTransitionDemand(demand.status, 'review')) return;
-    updateDemand(tx.db, { ...demand, status: 'review', updatedAt: tx.now });
-    tx.append({
-      type: 'demand.updated',
-      subject: { type: 'demand', id: demandId },
-      data: { demandId, status: 'review', reason: 'all_stages_done' },
-      demandId,
-    });
-    return;
-  }
-  const stageRun = listStageRunsForDemand(tx.db, demandId).find((run) => run.stageKey === next.key);
-  if (stageRun === undefined || stageRun.status !== 'pending') return;
-  const availability: ArtifactAvailability = { byKind: latestArtifactRefsByKind(tx.db, demandId) };
-  // A SAP gate decision is a human override: when the stage was parked after a
-  // failed attempt there is no artifact to satisfy the next stage's inputs yet.
-  // H1 owns the final gate semantics; until then `force` lets the approved gate
-  // advance and the next stage re-runs against whatever inputs exist.
-  if (!inputArtifactsReady(next, availability) && options.force !== true) return;
-  updateStageRun(tx.db, {
-    ...stageRun,
-    status: 'ready',
-    inputRefs: collectInputRefs(next, availability),
-    updatedAt: tx.now,
-  });
-  tx.append({
-    type: 'stage.ready',
-    subject: { type: 'stage_run', id: stageRun.id },
-    data: {
-      stageRunId: stageRun.id,
-      demandId,
-      stageKey: next.key,
-      executorKind: stageRun.executorKind,
-      templateId,
-    },
-    demandId,
-  });
-}
-
-/**
- * Re-open a stage after a rejected gate decision (new attempt, docs/003 §2.2).
- * H0's stage runner only picks up `ready` runs, so H2 re-opens as `ready` with
- * `attempt + 1` even though the H0 transition table keeps `done` terminal; H1
- * owns the final gate/attempt state machine and will replace this helper.
- */
-export function reopenStageAfterRejection(
-  tx: TransactionContext,
-  stageRun: StageRun,
-  reason: string,
-): void {
-  if (stageRun.status === 'cancelled' || stageRun.status === 'pending') return;
-  const reopened: StageRun = {
-    ...stageRun,
-    status: 'ready',
-    attempt: stageRun.attempt + 1,
-    startedAt: null,
-    finishedAt: null,
-    updatedAt: tx.now,
-  };
-  updateStageRun(tx.db, reopened);
-  tx.append({
-    type: 'stage.ready',
-    subject: { type: 'stage_run', id: stageRun.id },
-    data: {
-      stageRunId: stageRun.id,
-      demandId: stageRun.demandId,
-      stageKey: stageRun.stageKey,
-      executorKind: stageRun.executorKind,
-      attempt: reopened.attempt,
-      reason,
-    },
-    demandId: stageRun.demandId,
-  });
 }
 
 export interface SapGateArtifact {

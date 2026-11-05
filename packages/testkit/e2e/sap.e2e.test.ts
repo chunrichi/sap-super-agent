@@ -119,15 +119,17 @@ describe('H2 Phase A end-to-end (SAP ICF → control plane → writeback)', () =
     const demandId = sapDemand.demandId.toLowerCase();
 
     // 2. The control plane creates the demand, keeps the SAP UUID C32 and runs
-    //    the server-ai analysis stage (H0 behaviour, now SAP-sourced).
+    //    the server-ai analysis stage; the stage parks at gate G1 (autonomy
+    //    observe + gate, docs/003 §2.7).
     const analyzed = await waitFor(
       async () => {
         const current = await detail(demandId);
-        return current.stages[0]?.status === 'done' && current.artifacts.length > 0
+        const analysis = current.stages.find((stage) => stage.stageKey === 'requirement_analysis');
+        return analysis?.status === 'waiting_human' && current.artifacts.length > 0
           ? current
           : undefined;
       },
-      { timeoutMs: 5_000, label: 'SAP demand analysis stage' },
+      { timeoutMs: 5_000, label: 'SAP demand analysis parked at G1' },
     );
     expect(analyzed.demand).toMatchObject({
       id: demandId,
@@ -137,15 +139,18 @@ describe('H2 Phase A end-to-end (SAP ICF → control plane → writeback)', () =
     });
     expect(analyzed.artifacts[0]?.kind).toBe('requirement_analysis');
 
-    // 3. The writeback worker projects the status + artifact metadata into SAP.
+    // 3. The writeback worker projects the pending gate into SAP (docs/004 §2.1).
     await waitFor(
-      async () => (fake.demands.get(sapDemand.demandId)?.status === '开发中' ? true : undefined),
-      { timeoutMs: 5_000, label: 'SAP status projection' },
+      async () => (fake.demands.get(sapDemand.demandId)?.status === '待确认' ? true : undefined),
+      { timeoutMs: 5_000, label: 'SAP status projection 待确认 (G1 pending)' },
     );
-    const writeback = fake.writebacks.find((entry) => entry.status === 200);
-    expect(writeback?.patch).toMatchObject({ status: '开发中', stageKey: 'dev_implementation' });
+    const pendingWriteback = fake.writebacks.find(
+      (entry) => entry.status === 200 && entry.patch.status === '待确认',
+    );
+    expect(pendingWriteback).toBeDefined();
 
-    // 4. A SAP-side gate approval federates back as artifact.approved.
+    // 4. A SAP-side gate approval federates back and resolves the H1 gate: the
+    //    development stage becomes ready and the projection turns 开发中.
     fake.decideApproval({
       demandId: sapDemand.demandId,
       gateKey: 'G1',
@@ -155,14 +160,22 @@ describe('H2 Phase A end-to-end (SAP ICF → control plane → writeback)', () =
       stageKey: 'requirement_analysis',
     });
     await deliverAll();
-    const approved = await waitFor(
+    await waitFor(
       async () => {
         const current = await detail(demandId);
         return current.artifacts[0]?.state === 'approved' ? current : undefined;
       },
       { timeoutMs: 5_000, label: 'artifact approved from SAP' },
     );
+    const approved = await detail(demandId);
     expect(approved.events.map((event) => event.type)).toContain('artifact.approved');
+    expect(approved.stages.find((stage) => stage.stageKey === 'dev_implementation')?.status).toBe(
+      'ready',
+    );
+    await waitFor(
+      async () => (fake.demands.get(sapDemand.demandId)?.status === '开发中' ? true : undefined),
+      { timeoutMs: 5_000, label: 'SAP status projection 开发中' },
+    );
 
     // 5. The unbound demand enters the general task inbox (docs/009 #16):
     //    the task carries no workspace binding and is claimable by an executor

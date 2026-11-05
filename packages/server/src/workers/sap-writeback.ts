@@ -6,6 +6,7 @@ import {
   type SapStatusProjection,
   type SapWritebackPatch,
 } from '@sap-superagent/sap-adapter';
+import { listApprovalsForDemand } from '../db/approvals.js';
 import { getDemand } from '../db/demands.js';
 import { listStageRunsForDemand } from '../db/stages.js';
 import type { ServerContext } from '../types.js';
@@ -14,7 +15,6 @@ import {
   getSapSyncVersion,
   getWritebackCursor,
   insertSapOutboxRow,
-  listApprovalsForDemand,
   listArtifactMetadata,
   listDueSapOutbox,
   listEventsForWriteback,

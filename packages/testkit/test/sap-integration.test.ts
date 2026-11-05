@@ -213,6 +213,7 @@ describe('SAP inbound webhook (POST /hooks/sap)', () => {
     expect(detail.stages.map((stage) => stage.stageKey)).toEqual([
       'requirement_analysis',
       'dev_implementation',
+      'acceptance_archive',
     ]);
 
     // Same X-SA-Delivery again → duplicate, no second demand/event.
@@ -231,7 +232,7 @@ describe('SAP inbound webhook (POST /hooks/sap)', () => {
     expect(list.body.demands).toHaveLength(1);
 
     // The AI stage still runs and produces the requirement_analysis artifact.
-    const analyzed = await waitForStage(ctx, demandId, 'requirement_analysis', 'done');
+    const analyzed = await waitForStage(ctx, demandId, 'requirement_analysis', 'waiting_human');
     expect(analyzed.artifacts.map((artifact) => artifact.kind)).toContain('requirement_analysis');
   });
 
@@ -287,7 +288,7 @@ describe('SAP inbound webhook (POST /hooks/sap)', () => {
     const { demand } = ctx.fake.createDemandFromUi({ title: '旧标题', description: '旧描述' });
     await deliver(ctx);
     const demandId = demand.demandId.toLowerCase();
-    await waitForStage(ctx, demandId, 'requirement_analysis', 'done');
+    await waitForStage(ctx, demandId, 'requirement_analysis', 'waiting_human');
 
     const stored = ctx.fake.demands.get(demand.demandId);
     expect(stored).toBeDefined();
@@ -316,14 +317,14 @@ describe('SAP inbound webhook (POST /hooks/sap)', () => {
     ).toBe('cancelled');
   });
 
-  it('advances the stage on artifact.approved at a human gate (docs/003 §4.5)', async () => {
-    const ctx = await bootSap({
-      aiProvider: new FakeModelProvider({ responses: ['not-json', 'not-json'] }),
-    });
+  it('federates a SAP gate approval to the H1 gate runtime: approve closes the stage and advances', async () => {
+    const ctx = await bootSap();
     const { demand } = ctx.fake.createDemandFromUi({ title: '门禁需求' });
     await deliver(ctx);
     const demandId = demand.demandId.toLowerCase();
     const parked = await waitForStage(ctx, demandId, 'requirement_analysis', 'waiting_human');
+    expect(parked.artifacts).toHaveLength(1);
+    expect(parked.artifacts[0]?.state).toBe('in_review');
 
     ctx.fake.enqueueEvent('artifact.approved', demand.demandId, {
       demandId: demand.demandId,
@@ -343,33 +344,19 @@ describe('SAP inbound webhook (POST /hooks/sap)', () => {
     expect(advanced.stages.find((stage) => stage.stageKey === 'dev_implementation')?.status).toBe(
       'ready',
     );
+    expect(advanced.artifacts[0]?.state).toBe('approved');
     const stageDone = advanced.events.find((event) => event.type === 'stage.done');
-    expect(stageDone?.data).toMatchObject({ gateApproved: true, decidedBy: 'CONSULTANT01' });
-    expect(parked.stages[0]?.status).toBe('waiting_human');
+    expect(stageDone?.data).toMatchObject({ approvedBy: 'CONSULTANT01' });
   });
-
-  it('marks the artifact approved/rejected and reopens a stage on rejection', async () => {
+  it('starts a new attempt on a SAP rejection and keeps the artifact version chain', async () => {
     const ctx = await bootSap();
-    const { demand } = ctx.fake.createDemandFromUi({ title: '工件审批' });
+    const { demand } = ctx.fake.createDemandFromUi({ title: '工件驳回' });
     await deliver(ctx);
     const demandId = demand.demandId.toLowerCase();
-    const analyzed = await waitForStage(ctx, demandId, 'requirement_analysis', 'done');
-    const artifact = analyzed.artifacts[0];
+    const parked = await waitForStage(ctx, demandId, 'requirement_analysis', 'waiting_human');
+    const artifact = parked.artifacts[0];
     expect(artifact).toBeDefined();
     if (artifact === undefined) return;
-
-    ctx.fake.enqueueEvent('artifact.approved', demand.demandId, {
-      demandId: demand.demandId,
-      artifactId: artifact.id,
-      stageKey: 'requirement_analysis',
-      gateKey: 'G1',
-      decidedBy: 'CONSULTANT01',
-      decidedAt: new Date().toISOString(),
-    });
-    await deliver(ctx);
-    const approved = await demandDetail(ctx, demandId);
-    expect(approved.artifacts.find((entry) => entry.id === artifact.id)?.state).toBe('approved');
-    expect(approved.events.map((event) => event.type)).toContain('artifact.approved');
 
     ctx.fake.enqueueEvent('artifact.rejected', demand.demandId, {
       demandId: demand.demandId,
@@ -380,16 +367,21 @@ describe('SAP inbound webhook (POST /hooks/sap)', () => {
       comment: '请补充验收标准',
       decidedAt: new Date().toISOString(),
     });
-    await deliver(ctx);
-    const rejected = await demandDetail(ctx, demandId);
-    const reopened = rejected.stages.find((stage) => stage.stageKey === 'requirement_analysis');
-    expect(rejected.artifacts.find((entry) => entry.id === artifact.id)?.state).toBe('rejected');
-    expect(reopened?.attempt).toBe(2);
-    // The stage runner picks the reopened stage up again.
-    const rerun = await waitForStage(ctx, demandId, 'requirement_analysis', 'done');
-    expect(rerun.stages.find((stage) => stage.stageKey === 'requirement_analysis')?.attempt).toBe(2);
-  });
+    const [result] = await deliver(ctx);
+    expect(result?.body).toMatchObject({ action: 'stage_reopened' });
 
+    // Attempt 2 re-runs on a fresh immutable version and parks at the gate again
+    // (the old version is kept, never overwritten: docs/003 §2.4).
+    const rerun = await waitForStage(ctx, demandId, 'requirement_analysis', 'waiting_human');
+    expect(rerun.stages.find((stage) => stage.stageKey === 'requirement_analysis')?.attempt).toBe(2);
+    // Same artifact id, new version in the chain.
+    const chain = rerun.artifacts.find((entry) => entry.id === artifact.id);
+    expect(chain?.currentVersion).toBe(2);
+    expect(rerun.artifactVersions.filter((entry) => entry.artifactId === artifact.id)).toHaveLength(2);
+    const rerunEvents = rerun.events.map((event) => event.type);
+    expect(rerunEvents).toContain('artifact.rejected');
+    expect(rerunEvents).toContain('stage.ready');
+  });
   it('is fully disabled when SA_SAP_* is not configured (H0/H1 unaffected)', async () => {
     const ctx = await bootSap({ disabled: true });
     const response = await fetch(`${ctx.baseUrl}/hooks/sap`, {
@@ -419,24 +411,27 @@ describe('SAP writeback worker (outbox → PATCH ICF)', () => {
     });
     await deliver(ctx);
     const demandId = demand.demandId.toLowerCase();
-    await waitForStage(ctx, demandId, 'dev_implementation', 'ready');
+    await waitForStage(ctx, demandId, 'requirement_analysis', 'waiting_human');
 
-    // The projection reaches SAP: server-ai done + dev stage waiting → 开发中.
+    // Pending G1 → SAP projection 待确认 (docs/004 §2.1); the artifact metadata
+    // travels with the same writeback.
     await waitFor(
       async () => {
         const stored = ctx.fake.demands.get(demand.demandId);
-        return stored?.status === '开发中' ? stored : undefined;
+        return stored?.status === '待确认' ? stored : undefined;
       },
-      { timeoutMs: 5_000, label: 'SAP status projection 开发中' },
+      { timeoutMs: 5_000, label: 'SAP status projection 待确认' },
     );
+    await waitForOutboxDrained(ctx);
     const firstWritebacks = ctx.fake.writebacks.filter((entry) => entry.status === 200);
     expect(firstWritebacks.length).toBeGreaterThan(0);
     expect(firstWritebacks[0]?.ifMatch).toBe('1');
-    const artifactWriteback = firstWritebacks.find((entry) =>
-      JSON.stringify(entry.patch).includes('requirement_analysis'),
-    );
+    const artifactWriteback = firstWritebacks.find((entry) => {
+      const carried = entry.patch['artifacts'];
+      return Array.isArray(carried) && carried.length > 0;
+    });
     expect(artifactWriteback).toBeDefined();
-    expect(artifactWriteback?.patch).toMatchObject({ status: '开发中', statusText: '开发中' });
+    expect(artifactWriteback?.patch).toMatchObject({ status: '待确认', statusText: '待确认' });
     const artifacts = artifactWriteback?.patch['artifacts'] as
       | Array<Record<string, unknown>>
       | undefined;
@@ -448,12 +443,11 @@ describe('SAP writeback worker (outbox → PATCH ICF)', () => {
 
     await waitForOutboxDrained(ctx);
 
-    // 409: inject one conflict, then trigger a new writeback (artifact approved).
+    // G1 approval from SAP advances the workflow: dev stage ready → 开发中.
     const detail = await demandDetail(ctx, demandId);
     const artifact = detail.artifacts[0];
     expect(artifact).toBeDefined();
     if (artifact === undefined) return;
-    ctx.fake.injectFault({ kind: 'status', status: 409, method: 'PATCH', pathIncludes: '/api/demands/' });
     ctx.fake.enqueueEvent('artifact.approved', demand.demandId, {
       demandId: demand.demandId,
       artifactId: artifact.id,
@@ -463,6 +457,28 @@ describe('SAP writeback worker (outbox → PATCH ICF)', () => {
       decidedAt: new Date().toISOString(),
     });
     await deliver(ctx);
+    await waitFor(
+      async () => {
+        const stored = ctx.fake.demands.get(demand.demandId);
+        return stored?.status === '开发中' ? stored : undefined;
+      },
+      { timeoutMs: 5_000, label: 'SAP status projection 开发中' },
+    );
+    await waitForOutboxDrained(ctx);
+
+    // 409: inject one conflict, then trigger a new writeback via a SAP-side
+    // field change. The worker re-pulls, replays with a newer If-Match.
+    ctx.fake.injectFault({ kind: 'status', status: 409, method: 'PATCH', pathIncludes: '/api/demands/' });
+    const stored = ctx.fake.demands.get(demand.demandId);
+    expect(stored).toBeDefined();
+    if (stored === undefined) return;
+    stored.title = '回写需求（SAP 修改）';
+    stored.version += 1;
+    stored.changedAt = new Date().toISOString();
+    ctx.fake.enqueueEvent('demand.updated', demand.demandId, {
+      demand: ctx.fake.demandSnapshot(stored),
+    });
+    await deliver(ctx);
 
     await waitFor(
       async () => ctx.fake.writebacks.find((entry) => entry.status === 409),
@@ -470,18 +486,21 @@ describe('SAP writeback worker (outbox → PATCH ICF)', () => {
     );
     const drained = await waitForOutboxDrained(ctx);
     expect(drained.outbox.dead).toBe(0);
+    // The row that conflicts (injected or a natural stale If-Match from a
+    // concurrent projection) is re-pulled and replayed with a newer version.
     const conflictIndex = ctx.fake.writebacks.findIndex((entry) => entry.status === 409);
-    const replay = ctx.fake.writebacks.slice(conflictIndex + 1).find((entry) => entry.status === 200);
-    expect(replay?.patch).toMatchObject({ status: '开发中' });
-    // The replay was applied after re-pulling a version newer than the conflicted
-    // one; later queued writebacks may bump the SAP version again.
-    const sapDemand = ctx.fake.demands.get(demand.demandId);
+    expect(conflictIndex).toBeGreaterThanOrEqual(0);
     const conflictRow = ctx.fake.writebacks[conflictIndex];
-    expect(Number(replay?.ifMatch)).toBeGreaterThan(Number(conflictRow?.ifMatch));
-    expect(sapDemand?.version).toBeGreaterThan(Number(replay?.ifMatch));
+    const replay = ctx.fake.writebacks
+      .slice(conflictIndex + 1)
+      .find((entry) => entry.status === 200 && Number(entry.ifMatch) > Number(conflictRow?.ifMatch));
+    expect(replay).toBeDefined();
+    expect(ctx.fake.writebacks.some((entry) => entry.status === 200 && entry.patch.status === '开发中')).toBe(
+      true,
+    );
+    const sapDemand = ctx.fake.demands.get(demand.demandId);
     expect(sapDemand?.status).toBe('开发中');
   });
-
   it('retries 5xx with exponential backoff and dead-letters after maxAttempts (docs/009 #11)', async () => {
     const ctx = await bootSap({
       aiProvider: new FakeModelProvider({ responses: ['not-json', 'not-json'] }),

@@ -2,7 +2,7 @@
 
 > 面向 SAP 研发交付的 super-agent：需求记录在 SAP，编排在控制平面，编码在开发者身边的 VSCode，重复的文档工作由服务端 AI 主动完成。
 
-**状态：S0–S4、H2（SAP 需求系统）与 S5/M3 Phase A 已合入 `main`；S5 Phase B 的 SAP 侧可独立部分已完成（测试系统上 `ZCL_ZSA_AI_BATCH`/`ZSA_AI_BATCH_RUN` 已激活、ABAP Unit 15/15），端到端仍 blocked（缺控制平面可达/HMAC/服务账号、SM36、企业 AI 网关输入，见 [docs/010 §9.3](docs/010-m3-deployment.md#93-phase-b-人工输入清单blocked-判据)）。v1.0.0 发布物料已就绪（CHANGELOG、SECURITY/支持版本、版本号 1.0.0、VSIX 打包 `pnpm package:vsix`、真实 VSCode Extension Host 冒烟 `pnpm vscode:smoke`、离线文档链接检查 `pnpm link:check`），tag 待发布确认。** 代码按 [路线图](docs/007-roadmap.md) 推进；`pnpm check` / `pnpm e2e` / `pnpm build` / `pnpm sap:check` / `pnpm contract:check` / `pnpm link:check` 为当前验收命令。
+**状态：S0–S4、H2（SAP 需求系统）与 S5/M3 Phase A 已合入 `main`；S5 Phase B 的 SAP 侧可独立部分已完成（测试系统上 `ZCL_ZSA_AI_BATCH`/`ZSA_AI_BATCH_RUN` 已激活、ABAP Unit 15/15），端到端仍 blocked（缺控制平面可达/HMAC/服务账号、SM36、企业 AI 网关输入，见 [docs/010 §9.3](docs/010-m3-deployment.md#93-phase-b-人工输入清单blocked-判据)）。**v1.0.0 已于 2026-11-06 发布**（[tag `v1.0.0`](https://github.com/chunrichi/sap-super-agent/releases/tag/v1.0.0) + [GitHub Release](https://github.com/chunrichi/sap-super-agent/releases/tag/v1.0.0)，附 VSIX；CHANGELOG/SECURITY/版本 1.0.0、`pnpm package:vsix`、`pnpm vscode:smoke`、`pnpm link:check` 随仓库提供）。** 代码按 [路线图](docs/007-roadmap.md) 推进；`pnpm check` / `pnpm e2e` / `pnpm build` / `pnpm sap:check` / `pnpm contract:check` / `pnpm link:check` 为当前验收命令。
 
 **设计演示**：[demo/index.html](demo/index.html) — 10 幕 HTML 动画，浏览器打开即可（自动播放，支持 ← → / 空格 / 重播）。
 

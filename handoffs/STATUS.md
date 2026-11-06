@@ -14,6 +14,7 @@
 | S5 | [S5-sap-hosted-mode.md](S5-sap-hosted-mode.md) | done（**Phase A 已合入 main**，PR #13）；**Phase B 部分完成**（SAP 侧对象已激活 + ABAP Unit **15/15**），其余输入 blocked（见「S5 偏差与遗留」「S5 Phase B 进展」） | lead（Team：server-core / server-tests / testkit-e2e / abap-sap / docs-m3；Lead 契约+集成验收） | feat/s5-sap-hosted → 已合入 main | 2811cfa/e5dfe02（契约）→ 5f2c574（server）→ 464a56c（testkit+e2e）→ 4f27e11（SAP AFF）→ 5699915（docs/010/STATUS）→ **merge `1e556f0`（PR #13，CI ✅ 1m9s）**；Phase B 修复 `bd5ff61` + docs → **PR #14 merge `44b67a1`** | `pnpm install --frozen-lockfile --offline` ✅；`pnpm check` ✅ **469 tests**（protocol 59 / sap-adapter 31 / ai 28 / core 52 / vscode 98 / server 108 / cli 44 / testkit 49；contract **59 schemas / 9 examples / 27 routes**）；`pnpm e2e` ✅ **17/17，4.35s**（<5s，含 `sap-hosted` 全链路）；`pnpm build` ✅ 8/8；`pnpm sap:check` ✅ 离线 5 pass/1 skip（29 files；`validate:aff` 20/20、`check content` 10）；`SA_SAP_CHECK_ONLINE=1 pnpm sap:check` ✅ **6 pass / 0 skip**（含 `abap check syntax --all`）；`pnpm contract:check` ✅；**Phase B**：`abap test ZCL_ZSA_AI_BATCH` ✅ **15/15**、`abap pull --active` 与仓库一致 | Phase A 已合入 main（PR #13，merge `1e556f0`）；Phase B 部分完成（PR #14，merge `44b67a1`），剩余 blocked 输入：控制平面可达 + HMAC/服务账号、SM36/bgRFC、企业 AI 网关；**下一棒执行交接：[S5-phase-b-handoff.md](S5-phase-b-handoff.md)** |
 | S5-B | [S5-phase-b-handoff.md](S5-phase-b-handoff.md) | Phase B **blocked**（人工输入缺失）；**v1.0 发布准备 done 并合入 main**（PR #18，merge `ec3b3ca`，CI ✅ 1m18s） | lead（Team：vsix-engineer / docs-linker / release-auditor；Lead 集成验收） | chore/release-v1.0-prep PR #18（merge `ec3b3ca`） | 开工复跑：`pnpm check` 469 / `pnpm e2e` 17/17 / `abap doctor` + `profile test test` 全 ok；Phase B 晚复核：`abap test ZCL_ZSA_AI_BATCH` ✅ 15/15、`ZSA_CFG` 0 行、`TBTCO ZSA%` 0 → B3–B10 仍 blocked；**发布准备门禁**：`pnpm install --frozen-lockfile` ✅、`pnpm check` ✅ **469 tests**、`pnpm e2e` ✅ **17/17（4.18s）**、`pnpm build` ✅ 8/8、`pnpm sap:check` ✅ 5 pass/1 skip、`pnpm contract:check` ✅ 59/9/27、`pnpm eval:golden --check` ✅（24 cases，report 与提交一致）、`pnpm link:check` ✅（39 files / 365 links / 0 broken）、`pnpm package:vsix` ✅（6 files / 172 KiB / vsce 0 warning）、`pnpm vscode:smoke` ✅（真实 VSCode 1.145 Extension Host：任务箱/claim/context.md 811B/G1 审批 approved，12s，PASS） | **Phase B 仍 blocked**：缺控制平面可达 + `SA_SAP_HOOK_SECRET`、CP→SAP 服务账号、SM36 窗口、企业 AI 网关 URL/model/key/安全存储；未伪造真机结果。**v1.0 物料**：CHANGELOG、SECURITY（支持版本/私有报告渠道）、版本统一 1.0.0（8 包 + root + CLI/healthz + contracts）、VSIX 打包 + 真实 Extension Host 冒烟、离线链接检查、README 快速开始复跑、CI 增 build/sap:check/link:check；**v1.0.0 发布（2026-11-06）**：CHANGELOG 定稿（含发布前 UI 完善）→ annotated tag → GitHub Release + VSIX 附件（发布登记见「v1.0.0 发布」节）。 |
 | UI-1 | 用户请求「完善界面显示（含 SAP 的）」（无独立任务书；契约沿用 docs/003/004） | done（**已合入 main，PR #20**，CI ✅ 1m13s） | lead（Team：sap-ui-dev / abap-handler-dev / vscode-ui-dev；Lead 集成验收） | feat/ui-polish | PR #20（merge `待记`） | `pnpm lint` ✅；`pnpm --filter sap-superagent-vscode run check` ✅ **115 tests**；`node scripts/sap-ui-preview.mjs` 四场景（default/empty/expired/pending-row）✅；SAP UI 截图（列表/详情推断 pending/pdo/审批后/窄屏）✅；`abap mime push sap/ui --root /zsa/ui --yes` → **uploaded=3**；`abap test ZCL_ZSA_HTTP_HANDLER` ✅ **7/7**；`SA_SAP_CHECK_ONLINE=1 pnpm sap:check` ✅ 6 pass/0 skip；集成门禁见「UI 完善进展（2026-11-06）」；PR #20 CI ✅ 1m13s | SAP Web 重构 + ICF API `currentUser`/`decidedAt`/审批人缺省登录用户 + 审批回写去噪；VSCode 任务箱图标/中文/空态/欢迎页/无障碍；本地预览 `pnpm sap:ui:preview`。待办：真机 SSO 联调（ICF 登录 401，无法在本轮目视 SAP 页面）；控制平面把 pending 审批投影到 SAP 可作为后续收敛（当前 UI 用 status+stage 推断）。 |
+| REL-1 | v1.0.0 打 tag + GitHub Release（用户确认发布） | done（**v1.0.0 已发布**） | lead | —（tag 直接指向 main 发布提交） | annotated tag `v1.0.0`（tag 对象 `7c12c74` → commit `ce3556d`，PR #21 merge） | `gh release view v1.0.0`：Latest / 非草稿 / 非预发布；附件 `sap-superagent-vscode-1.0.0.vsix`（178,617 B，state=uploaded，sha256 `1dce5db0…93be`）；PR #21 CI ✅ 1m20s、main push CI ✅ 1m14s；VSIX 真实 `code --install-extension` 安装通过（v1.0.0，main=`./dist/extension.cjs`） | Release notes 取自 CHANGELOG `[1.0.0]` 并如实写 S5 Phase B blocked / SAP Web 真机目视未验证；不发布 npm/Docker；未配置 GPG，使用 annotated tag。 |
 
 ## H0 偏差与遗留（交接给 H1 / H2 / 用户）
 
@@ -118,6 +119,7 @@
 | 2026-11-06 | VSCode 任务箱界面完善：`labels.ts` 中文映射、codicon/空态占位/`viewsWelcome`+`sapSuperAgent.connected`、状态栏待审批数与无障碍、命令反馈带下一步；`pnpm --filter sap-superagent-vscode run check` **115 tests**、`pnpm lint` 干净。`pnpm sap:check` 在线模式改为只校验 sap/ 受控源码（避免 tmp/ scratch 误报）。 |
 | 2026-11-06 | UI 完善落地：`feat/ui-polish` 推送 → **PR #20** → CI ✅ 1m13s（install/check 486 tests/e2e 17/17/build/sap:check/link:check）→ merge（见 main 历史）；SAP 侧真机证据：`abap mime push` uploaded=3、`abap test ZCL_ZSA_HTTP_HANDLER` 7/7、`SA_SAP_CHECK_ONLINE=1 pnpm sap:check` 6 pass/0 skip。 |
 | 2026-11-06 | v1.0.0 发布定稿：把 `[Unreleased]` 内容（SAP Web + VSCode 任务箱 UI 完善、ICF `currentUser`/`decidedAt`、审批回写去噪、sap:check 修复）并入 `[1.0.0]` 并改用发布日期 2026-11-06；README/HANDOFF/docs/006 §3.4/docs/007 §2 同步「已发布」口径；随后 annotated tag `v1.0.0` + GitHub Release（VSIX 附件），发布登记与 sha256 见后续 docs 提交。 |
+| 2026-11-06 | v1.0.0 发布执行（用户确认）：最终文档 PR #21（CHANGELOG 定稿，`[1.0.0] - 2026-11-06`）→ CI ✅ 1m20s → merge `ce3556d`；随后在 `ce3556d` 创建 annotated tag `v1.0.0`（tag 对象 `7c12c74`）并推送；从 tag 提交重新 `pnpm package:vsix` 后 `gh release create v1.0.0`（Latest，非草稿，附件 VSIX 178,617 B / sha256 `1dce5db0…93be`）；main push CI ✅ 1m14s；VSIX 安装冒烟通过。发布详情见「v1.0.0 发布（2026-11-06）」。 |
 ## H2 Phase A 偏差与遗留（交接给 H1 / Lead / 用户）
 
 1. **Phase A 交付**：`packages/sap-adapter`（client/mapping/signature/reconcile，31 单测）、`packages/testkit` fake ICF（6 路由 + 超时/409/401/坏 JSON 注入 + HMAC 签名投递）、`packages/server` `/hooks/sap`（HMAC ±5min、`X-SA-Delivery` 幂等、003 §4.5 五类事件 + `hook.receipt`）、`sap-writeback` worker（事件→outbox→PATCH，2s 指数退避≤5min、5 次、4xx 死信、409 重拉重放）、`sap:reconcile`、`sap/` abapGit+AFF 源文件（6 DDIC 表 / 3 类 / ICF 节点 / MIME UI / job / ABAP Unit）、`pnpm sap:check`。
@@ -312,7 +314,7 @@
 | CI | `.github/workflows/ci.yml` 增 `pnpm build`、`pnpm sap:check`（无 abap CLI 时自动 skip 仍退出 0）、`pnpm link:check` | 本地同序全绿；PR CI 结果见交接日志 |
 | 发布审计 | LICENSE/NOTICE 无阻塞项（未修改）；docs/006 §3.4 的 changesets/release.yml/npm publish/Docker digest/sap tag 与现实差异校准为「v1.0 不交付/后续」 | 审计结论：NOTICE 建议后续补 abap-cli MIT 全文与 `.agents/agents/abap-developer.agent.md` 来源；VSIX 第三方 notices 留待发布流程 |
 
-**待确认/后续**：`v1.0.0` tag/Release 在 CHANGELOG 定稿 PR 合入后执行并在交接日志登记；`pnpm vscode:smoke` 依赖桌面版 VSCode（CI 不跑，非 macOS 未实测）；VSIX 未做多版本宿主矩阵；`packages/clients/vscode/tsconfig.build.json` 已无脚本引用（保留待清理）。
+**待确认/后续**：`v1.0.0` tag/Release **已于 2026-11-06 发布**（见「v1.0.0 发布」节）；`pnpm vscode:smoke` 依赖桌面版 VSCode（CI 不跑，非 macOS 未实测）；VSIX 未做多版本宿主矩阵；`packages/clients/vscode/tsconfig.build.json` 已无脚本引用（保留待清理）。
 
 ## UI 完善进展（2026-11-06）
 
@@ -328,3 +330,18 @@
 | 门禁修复 | `scripts/sap-check.mjs` 在线模式由 `abap check syntax --all`（会扫 `tmp/` scratch）改为只校验 `sap/` 受控 ABAP 文件；`pnpm sap:check` 在线输出 10 files passed | 离线 5 pass/1 skip；在线 6 pass/0 skip ✅ |
 
 **遗留/待确认（如实）**：① SAP 页面本身因 ICF 登录（SSO）无凭据仍是 401，本轮只验证 MIME `uploaded=3` + 本地预览，真机目视需 Basis 登录（与 Phase B blocked 输入重叠）；② 控制平面目前不把 pending 审批投影到 SAP，UI 用 status+stage 推断（后续可在 sap-writeback 中投影 pending，替代推断）；③ ICF SSO 下 fetch 跨域重定向的 401/CORS 形态需真机联调；④ 新增模板需同步前端 `TEMPLATE_STAGE_GATES`/`TEMPLATE_GATE_ROLES`（默认/pdo 之外的模板未覆盖）。
+
+## v1.0.0 发布（2026-11-06）
+
+> 发布动作由用户确认后执行；发布内容 = `main` 发布提交 + annotated tag + GitHub Release（VSIX 附件），release notes 取自 [CHANGELOG](../CHANGELOG.md) `[1.0.0]` 并如实写明 S5 Phase B blocked 与已知问题。
+
+| 项 | 值 |
+| --- | --- |
+| 发布提交（tag 指向） | `ce3556d`（Merge PR #21，`main`） |
+| annotated tag | `v1.0.0`（tag 对象 `7c12c74`，由 `git tag -a` 创建；维护者未配置 GPG，未签名） |
+| GitHub Release | https://github.com/chunrichi/sap-super-agent/releases/tag/v1.0.0（Latest / 非草稿 / 非预发布，发布于 2026-11-06T11:35:06Z） |
+| 附件 | `sap-superagent-vscode-1.0.0.vsix`（178,617 bytes；sha256 `1dce5db01f392eeefe7039ba34877beee0f2535ae4fab95542d3a59dfa0e93be`） |
+| 发布前门禁 | PR #21 CI ✅ 1m20s（install/check 486 tests/e2e 17/17/build/sap:check/link:check）；main push CI ✅ 1m14s |
+| VSIX 冒烟 | 从发布提交重新 `pnpm package:vsix`（6 files / 174.4 KiB / vsce warnings: none）→ `code --install-extension` 安装成功（v1.0.0，main `./dist/extension.cjs`） |
+
+**发布边界（如实）**：不发布 npm 包、不产出 Docker 镜像；SAP 侧对象为测试系统本地包 `$ZSA`（无 TR），随 release notes 说明，不单独打 SAP tag；S5 Phase B 真机端到端仍 blocked（B3–B10 未执行），SAP Web 页面真机目视仍待 ICF SSO 登录。

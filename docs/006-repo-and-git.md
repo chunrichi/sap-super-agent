@@ -157,7 +157,7 @@ Refs: #12
 - 版本线：按 SemVer 打 tag（`v1.0.0` 起），包之间固定版本（fixed versioning），一次发布一个 tag，减少版本组合。
 - **v1.0.0 实际发布物** = 源码 tag `v1.0.0` + [CHANGELOG.md](../CHANGELOG.md) + GitHub Release（发布说明与 VSIX 附件）。SAP 侧对象是本地包 `$ZSA`，随源码 tag 在发布说明中记录，不单独打 tag（无传输请求）。
 - 当前所有包 `private: true`，**不发布 npm**，也不产出 Docker 镜像 digest；M2 团队部署的 systemd / docker compose 方式见 [010 M3 部署与运维](010-m3-deployment.md) §5，镜像与发布流程不属于 v1.0 交付物。
-- 自动化发布（changesets 管理版本与 CHANGELOG、GitHub Actions release workflow 在 tag 上发布）列为后续项；当前发布由维护者手动执行：跑 [009 §4](009-testing.md) 门禁 → 更新 CHANGELOG → `git tag -a v1.0.0 -m "SAP Super Agent v1.0.0"`（维护者未配置 GPG 签名时用 annotated tag；配置后可改 `-s`）→ `git push origin v1.0.0` → `gh release create v1.0.0 --notes-file <notes> <vsix>`。`v1.0.0` 已按此流程于 2026-11-06 发布。
+- 自动化发布（changesets 管理版本与 CHANGELOG、GitHub Actions release workflow 在 tag 上发布）列为后续项；当前发布由维护者手动执行：跑 [009 §4](009-testing.md) 门禁 → 更新 CHANGELOG → `git tag -a v1.0.0 -m "SAP Super Agent v1.0.0"`（维护者未配置 GPG 签名时用 annotated tag；配置后可改 `-s`）→ `git push origin v1.0.0` → `gh release create v1.0.0 --notes-file <notes> <vsix>`。`v1.0.0` 已按此流程于 2026-11-06 发布（annotated tag → commit `ce3556d`；GitHub Release：https://github.com/chunrichi/sap-super-agent/releases/tag/v1.0.0 ，附 VSIX）。
 - 发布节奏：S0–S1 期间按需；v0.1.0 = walking skeleton 可演示；v1.0.0 = M1 本地模式 + SAP ICF/MIME + 门禁/模板 + Hook 示例 + VSCode 扩展可用（M2 规模与 M3 Phase B 真机项按 [007-roadmap.md](007-roadmap.md) 与 CHANGELOG Known issues 跟踪）。
 
 ### 3.5 PR 与 Issue

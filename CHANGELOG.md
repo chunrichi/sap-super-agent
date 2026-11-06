@@ -8,38 +8,12 @@
 
 ## [Unreleased]
 
-### Added
+## [1.0.0] - 2026-11-06
 
-- **SAP 内 Web（MIME `/zsa/ui`）重构**：hash 路由（`#/list`、`#/demand/<id>`、`#/new`）、列表搜索/状态筛选/
-  待我确认·待我验收、结果计数与加载/空/错误态、详情（元信息、工件表、待审批门禁卡片、审批历史、事件时间线）、
-  新建需求（模板选择）、Fiori 风格响应式布局、focus-visible/`aria-live`/会话过期 banner。
-- **SAP ICF API**：列表/详情响应新增 `currentUser`（ICF 会话用户）；`approvals[]` 新增 `decidedAt`；
-  审批 POST 的 `decidedBy` 变为可选（缺省 `sy-uname`）。`ZCL_ZSA_HTTP_HANDLER` ABAP Unit 增至 **7/7**。
-- **本地预览**：`pnpm sap:ui:preview`（`scripts/sap-ui-preview.mjs`：静态页 + mock ICF API；
-  `--scenario default|empty|expired|pending-row`，默认 `:4173`；仅开发用，不进 MIME/发布物）。
-- **VSCode 任务箱界面**：分组/优先级/审批/通知 codicon、任务状态与门禁角色/通知类型中文化、空分组占位行、
-  `viewsWelcome`（未连接 → 连接控制平面；已连接空闲 → 领取任务）、`sapSuperAgent.connected` 上下文键、
-  无障碍标签、状态栏 tooltip 待审批门禁数、命令反馈统一带下一步动作。
-
-### Changed
-
-- SAP 内审批门禁：页面优先使用 `approvals[]` 中的 `state=pending` 行；控制平面尚未把 pending 审批投影到
-  SAP 时，按 `STATUS`（待确认/待验收）+ `STAGE_KEY` + 模板 stage→gate 映射推断；同一门禁已有决定后不再
-  重复提供操作（防重复审批），审批历史过滤旧噪声行（如 `GATE`）并去重。
-- 审批记录以 SAP Web 为真相：控制平面回写只在带完整 `gateKey` 时投影审批，并对同需求+门禁复用/更新已有行。
-
-### Fixed
-
-- SAP 回写 `artifact.approved/rejected` 不再产生 `gate_key='GATE'`、`decided_by` 为空的噪声审批行
-  （真实事件不带 gateKey/decidedBy）。
-- `pnpm sap:check` 在线模式只校验 `sap/` 受控源码，不再扫描 `tmp/` 下 `abap pull` 的 scratch 副本
-  （避免本地实验被误判为 CI 失败）。
-
-## [1.0.0] - 2026-11-05
-
-首个发布版本。覆盖路线图 S0–S5 Phase A（本地闭环、门禁/模板/golden、SAP 需求系统、多人在线派发、
-Hook、SAP 批处理 AI），以及 S5 Phase B 中 SAP 侧可独立验证的部分。Phase B 其余输入仍 blocked，
-未做真机端到端验收，见 [Known issues](#known-issues)。
+首个公开版本（2026-11-06 发布，含发布前一轮 SAP Web / VSCode 任务箱界面完善）。覆盖路线图
+S0–S5 Phase A（本地闭环、门禁/模板/golden、SAP 需求系统、多人在线派发、Hook、SAP 批处理 AI），
+以及 S5 Phase B 中 SAP 侧可独立验证的部分。Phase B 其余输入仍 blocked，未做真机端到端验收，
+见 [Known issues](#known-issues)。
 
 ### Added
 
@@ -95,6 +69,9 @@ Hook、SAP 批处理 AI），以及 S5 Phase B 中 SAP 侧可独立验证的部�
   工作区绑定与切换目录立即回池；claim 前 client preflight（工作区信任、仓库状态、`abap` 可用性等）。
 - 发布前新增可复现 VSIX 打包与真实 VS Code Extension Host 冒烟脚本（`pnpm package:vsix` /
   `pnpm vscode:smoke`），本地/发布前运行，CI 不跑（依赖图形宿主）。
+- 界面完善：任务箱分组/优先级/审批/通知 codicon、任务状态与门禁角色/通知类型中文化、空分组占位行、
+  `viewsWelcome`（未连接 → 连接控制平面；已连接空闲 → 领取任务）与 `sapSuperAgent.connected` 上下文键、
+  节点无障碍标签；状态栏 tooltip 含待审批门禁数；命令反馈统一带下一步动作。
 
 #### SAP 侧（sap/）
 
@@ -104,6 +81,12 @@ Hook、SAP 批处理 AI），以及 S5 Phase B 中 SAP 侧可独立验证的部�
   SM36 入口 `ZSA_OUTBOX_PUSH`；AFF 源文件入库，`pnpm sap:check` 离线校验（不连 SAP）。
 - M3：`ZCL_ZSA_AI_BATCH`（取 job → 企业 AI 网关 → 回传模型原始输出）与 `ZSA_AI_BATCH_RUN`
   SM36 周期 job 入口、`ZSA_CFG` 新键；测试系统上 ABAP Unit 15/15（Phase B 的 B1/B2）。
+- SAP 内 Web（MIME `/zsa/ui`）重构：hash 路由 `#/list` `#/demand/<id>` `#/new`、搜索/状态筛选/
+  待我确认·待我验收、详情工件表与待审批门禁卡片、审批历史（决定人/时间/意见）、事件时间线、新建需求、
+  Fiori 风格响应式布局、`aria-live` 与会话过期 banner；`pnpm sap:ui:preview` 本地 mock 预览。
+- ICF API：列表/详情响应新增 `currentUser`（ICF 会话用户），`approvals[]` 新增 `decidedAt`，
+  审批 POST 的 `decidedBy` 可选（缺省 `sy-uname`）；`ZCL_ZSA_HTTP_HANDLER` ABAP Unit 增至 7/7。
+- 真机上 `abap mime push sap/ui --root /zsa/ui` 部署 3 个 MIME 资源（`$ZSA` 本地包，无 TR）。
 
 #### 示例与文档
 
@@ -115,6 +98,9 @@ Hook、SAP 批处理 AI），以及 S5 Phase B 中 SAP 侧可独立验证的部�
   总时长约 4 秒；CI 为 GitHub Actions，执行 `pnpm install --frozen-lockfile` + `pnpm check` + `pnpm e2e`。
 - 仓库物料：CONTRIBUTING（Conventional Commits + DCO）、CODE_OF_CONDUCT、SECURITY、NOTICE
   （声明 `.agents/skills/abap-cli*` 的 MIT 来源）、Issue/PR 模板、设计文档 000–010、设计演示 `demo/`。
+- 本地预览与文档门禁：`scripts/sap-ui-preview.mjs`（`pnpm sap:ui:preview`，静态页 + mock ICF API）、
+  `scripts/link-check.mjs`（`pnpm link:check`）、`scripts/{vsix-package,vscode-smoke}.mjs`；
+  docs/004 §4 与 docs/005 §2.2 同步界面说明。
 
 ### Changed
 
@@ -125,6 +111,11 @@ Hook、SAP 批处理 AI），以及 S5 Phase B 中 SAP 侧可独立验证的部�
   `templates/pdo.yaml`（6 阶段 G1–G5），`POST /admin/tasks` 仅保留给 S0 兼容与运维手建。
 - `server-ai` 阶段在 M3 下可委派给 SAP 批处理 job；不设置 `SA_SAP_AI_BATCH` 时行为与 S0–S4 一致。
 - Hook 默认全部禁用（`examples/hooks.yaml` 全部 `enabled: false`），不改变既有部署行为。
+- SAP 内审批门禁：页面优先使用 `approvals[]` 的 `state=pending` 行；控制平面尚未把 pending 审批投影到
+  SAP 时，按 `STATUS`（待确认/待验收）+ `STAGE_KEY` + 模板 stage→gate 推断，同一门禁已有决定后不再
+  重复提供操作（防重复审批）。
+- 审批记录以 SAP Web 为真相：控制平面回写只在带完整 `gateKey` 时投影审批，并对同需求+门禁复用/更新
+  已有行。
 
 ### Fixed
 
@@ -133,6 +124,9 @@ Hook、SAP 批处理 AI），以及 S5 Phase B 中 SAP 侧可独立验证的部�
 - ABAP Unit 断言错误（`find()` 未命中返回 `-1`）修复后 `ZCL_ZSA_AI_BATCH` 单测 15/15（PR #14）。
 - 修复两处 CI 偶发失败：SAP job 租约用例的时序竞态、S0 resync 用例对固定等待窗口的假设（PR #16）。
 - Hook 回执幂等键按 Hook 作用域隔离，修复同一外部幂等键在不同 Hook 间被误判为重复的问题。
+- SAP 回写 `artifact.approved/rejected` 不再产生 `gate_key='GATE'`、`decided_by` 为空的噪声审批行
+  （真实事件不带 gateKey/decidedBy）。
+- `pnpm sap:check` 在线模式只校验 `sap/` 受控源码，不再扫描 `tmp/` 下 `abap pull` 的 scratch 副本。
 
 ### Security
 
@@ -171,6 +165,10 @@ Hook、SAP 批处理 AI），以及 S5 Phase B 中 SAP 侧可独立验证的部�
   （[docs/003 §2.5](docs/003-domain-and-protocol.md#25-门禁-approval)）。
 - **VSCode 扩展**：真实 Extension Host 冒烟只在本地/发布前执行（CI 无图形宿主）；未发布到
   VS Code Marketplace，按 GitHub Release / VSIX 分发。
+- **SAP Web 真机目视未验证**：测试系统 ICF 登录（SSO）未配置，`/sap/zsa/ui/*` 仍返回 401；界面以
+  本地 mock 预览 + 真实 Chrome 渲染 + MIME `uploaded=3` 验收，未做真机登录目视。
+- **待审批门禁推断是临时兜底**：控制平面当前不把 pending 审批投影到 SAP，页面用 `STATUS`+`STAGE_KEY`
+  推断；后续可在 `sap-writeback` 中投影 pending 审批替代推断。新增模板需同步前端 stage→gate/role 映射。
 - **M3 网关兼容性**：默认 OpenAI 兼容 `POST <AI_GATEWAY_URL>/chat/completions`；ABAP AI SDK 与
   bgRFC 属 Phase B 决策，本版本不实现（[docs/010 §10](docs/010-m3-deployment.md#10-已知限制)）。
 
